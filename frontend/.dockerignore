@@ -1,0 +1,18 @@
+# The critical one. Without it `COPY . .` ships the host's node_modules into
+# the image, overwriting what `npm ci` just installed — and on a Windows host
+# those are Windows binaries that cannot run in a Linux container.
+node_modules/
+dist/
+
+.git
+.gitignore
+.idea
+
+# Vite inlines env values at build time, so a stray local file would be baked
+# into the bundle and served to every user.
+.env
+.env.*
+!.env.example
+
+*.log
+coverage/

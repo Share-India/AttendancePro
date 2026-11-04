@@ -1,0 +1,24 @@
+# Normalise text in the repository, let each checkout use its native endings.
+* text=auto
+
+# These are executed by a shell. CRLF breaks them on Linux and macOS, which is
+# how anyone cloning this on a non-Windows machine would first meet the project.
+mvnw           text eol=lf
+*.sh           text eol=lf
+gradlew        text eol=lf
+
+# Windows-only launchers stay CRLF.
+mvnw.cmd       text eol=crlf
+*.bat          text eol=crlf
+
+# Never touched.
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.gif          binary
+*.ico          binary
+*.pdf          binary
+*.xlsx         binary
+*.docx         binary
+*.pptx         binary
+*.jar          binary

@@ -1,0 +1,42 @@
+# Build output
+target/
+dist/
+build/
+*.class
+
+# Dependencies
+node_modules/
+
+# Environment — never commit real credentials
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Maven
+.mvn/wrapper/maven-wrapper.jar
+
+# Internal company material — this repository is public.
+# Branded pitch and solution documents.
+Attendance-Platform-*.pptx
+Attendance-Platform-*.pdf
+Attendance-Platform-*.docx
+# Real exam content: question banks carry their own answer keys.
+# The blank upload template is committed; filled workbooks are not.
+docs/exam/*.xlsx
+!docs/exam/Exam-Question-Upload-Template.xlsx
+
+# Generated documentation bundle. scripts/build-docs-pdf.py rebuilds it from
+# the Markdown in docs/, so the PDF is an output, not a source.
+docs/employee-attendance-system-documentation.pdf

@@ -1,0 +1,46 @@
+# Tests run against H2 because Docker is not available on this machine.
+# Flyway is disabled here and Hibernate generates the schema instead, so the
+# MySQL-specific DDL in db/migration stays the single source of truth for real
+# environments. Migration correctness is verified separately against MySQL.
+spring:
+  datasource:
+    url: jdbc:h2:mem:attendance_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: false
+
+app:
+  jwt:
+    secret: dGVzdC1vbmx5LXNlY3JldC1rZXktZm9yLWp1bml0LXRlc3RzLW5vdC1mb3ItcHJvZHVjdGlvbi11c2UtMTIzNDU2Nzg5MA==
+    access-token-expiration-minutes: 15
+    refresh-token-expiration-days: 7
+    issuer: attendance-api
+  security:
+    max-failed-login-attempts: 3
+    account-lockout-minutes: 30
+    password-reset-token-validity-minutes: 30
+    bcrypt-strength: 4
+    refresh-cookie-name: refresh_token
+    refresh-cookie-secure: false
+    refresh-cookie-same-site: Strict
+  cors:
+    allowed-origins: http://localhost:5173
+    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+    allowed-headers: "*"
+    exposed-headers: X-Request-Id
+    allow-credentials: true
+    max-age: 3600
+
+logging:
+  level:
+    org.hibernate.SQL: WARN

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Forgot Password - HRMS Portal</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#444651",
+                        "on-primary-fixed": "#00164e",
+                        "tertiary-fixed": "#6ffbbe",
+                        "outline-variant": "#c5c5d3",
+                        "background": "#f7f9fb",
+                        "on-error": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "surface-bright": "#f7f9fb",
+                        "surface-tint": "#4059aa",
+                        "primary-fixed-dim": "#b6c4ff",
+                        "on-secondary-container": "#54647a",
+                        "on-surface": "#191c1e",
+                        "on-tertiary-fixed": "#002113",
+                        "on-primary-container": "#90a8ff",
+                        "secondary-fixed": "#d3e4fe",
+                        "on-background": "#191c1e",
+                        "inverse-on-surface": "#eff1f3",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#264191",
+                        "tertiary-container": "#004a31",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container-low": "#f2f4f6",
+                        "tertiary-fixed-dim": "#4edea3",
+                        "secondary-container": "#d0e1fb",
+                        "surface-container-high": "#e6e8ea",
+                        "surface-variant": "#e0e3e5",
+                        "surface-dim": "#d8dadc",
+                        "error": "#ba1a1a",
+                        "surface-container": "#eceef0",
+                        "error-container": "#ffdad6",
+                        "tertiary": "#00311f",
+                        "on-secondary-fixed-variant": "#38485d",
+                        "inverse-primary": "#b6c4ff",
+                        "on-tertiary-container": "#27c38a",
+                        "primary": "#00236f",
+                        "secondary-fixed-dim": "#b7c8e1",
+                        "primary-fixed": "#dce1ff",
+                        "primary-container": "#1e3a8a",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#2d3133",
+                        "surface": "#f7f9fb",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-secondary-fixed": "#0b1c30",
+                        "secondary": "#505f76",
+                        "outline": "#757682"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-desktop": "32px",
+                        "unit": "4px",
+                        "gutter": "24px",
+                        "lg": "24px",
+                        "sm": "8px",
+                        "xl": "32px",
+                        "margin-mobile": "16px",
+                        "xs": "4px",
+                        "md": "16px"
+                    },
+                    "fontFamily": {
+                        "body-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-sm": ["12px", { "lineHeight": "16px", "fontWeight": "400" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "headline-lg": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "display-lg": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface-dim min-h-screen flex items-center justify-center p-md font-body-md text-on-surface">
+<main class="w-full max-w-[420px] bg-surface-container-lowest rounded-xl shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)] border border-surface-variant p-xl overflow-hidden relative">
+<!-- Brand / Header -->
+<div class="mb-lg text-center">
+<h1 class="font-headline-md text-headline-md text-primary mb-md">HRMS Portal</h1>
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-xs">Reset your password</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                Enter your registered email address and we'll send you a link to reset your password.
+            </p>
+</div>
+<!-- Optional Status Message (Demonstration) -->
+<div class="bg-tertiary-fixed-dim bg-opacity-20 border border-tertiary-fixed-dim text-on-tertiary-fixed-variant p-md rounded-lg flex items-start gap-sm mb-lg">
+<span class="material-symbols-outlined text-[20px]" data-icon="check_circle" data-weight="fill" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-body-sm text-body-sm pt-[2px]">Instruction sent to your email. Please check your inbox.</span>
+</div>
+<!-- Form -->
+<form action="#" class="space-y-lg" method="POST">
+<div class="space-y-xs">
+<label class="block font-label-md text-label-md text-on-surface" for="email">Registered Email Address</label>
+<input class="w-full px-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-body-md text-body-md text-on-surface placeholder-outline transition-colors" id="email" name="email" placeholder="name@company.com" required="" type="email"/>
+</div>
+<button class="w-full bg-primary hover:bg-on-primary-fixed-variant text-on-primary font-label-md text-label-md py-[12px] px-md rounded-lg transition-colors flex items-center justify-center gap-xs" type="submit">
+                Send Reset Link
+            </button>
+</form>
+<!-- Navigation -->
+<div class="mt-xl text-center">
+<a class="inline-flex items-center justify-center gap-xs text-primary hover:text-primary-fixed-dim font-label-md text-label-md transition-colors group" href="#">
+<span class="material-symbols-outlined text-[18px] transition-transform group-hover:-translate-x-1" data-icon="arrow_back">arrow_back</span>
+                Back to Login
+            </a>
+</div>
+</main>
+</body></html>

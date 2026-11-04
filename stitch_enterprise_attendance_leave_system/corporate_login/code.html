@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Enterprise HRMS - Login</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#444651",
+                        "on-primary-fixed": "#00164e",
+                        "tertiary-fixed": "#6ffbbe",
+                        "outline-variant": "#c5c5d3",
+                        "background": "#f7f9fb",
+                        "on-error": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "surface-bright": "#f7f9fb",
+                        "surface-tint": "#4059aa",
+                        "primary-fixed-dim": "#b6c4ff",
+                        "on-secondary-container": "#54647a",
+                        "on-surface": "#191c1e",
+                        "on-tertiary-fixed": "#002113",
+                        "on-primary-container": "#90a8ff",
+                        "secondary-fixed": "#d3e4fe",
+                        "on-background": "#191c1e",
+                        "inverse-on-surface": "#eff1f3",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#264191",
+                        "tertiary-container": "#004a31",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container-low": "#f2f4f6",
+                        "tertiary-fixed-dim": "#4edea3",
+                        "secondary-container": "#d0e1fb",
+                        "surface-container-high": "#e6e8ea",
+                        "surface-variant": "#e0e3e5",
+                        "surface-dim": "#d8dadc",
+                        "error": "#ba1a1a",
+                        "surface-container": "#eceef0",
+                        "error-container": "#ffdad6",
+                        "tertiary": "#00311f",
+                        "on-secondary-fixed-variant": "#38485d",
+                        "inverse-primary": "#b6c4ff",
+                        "on-tertiary-container": "#27c38a",
+                        "primary": "#00236f",
+                        "secondary-fixed-dim": "#b7c8e1",
+                        "primary-fixed": "#dce1ff",
+                        "primary-container": "#1e3a8a",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#2d3133",
+                        "surface": "#f7f9fb",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-secondary-fixed": "#0b1c30",
+                        "secondary": "#505f76",
+                        "outline": "#757682"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-desktop": "32px",
+                        "unit": "4px",
+                        "gutter": "24px",
+                        "lg": "24px",
+                        "sm": "8px",
+                        "xl": "32px",
+                        "margin-mobile": "16px",
+                        "xs": "4px",
+                        "md": "16px"
+                    },
+                    "fontFamily": {
+                        "body-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-sm": ["12px", { "lineHeight": "16px", "fontWeight": "400" }],
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "headline-lg": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "display-lg": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background min-h-screen flex flex-col md:flex-row antialiased selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- Left Side: Branding / Imagery (Hidden on small screens) -->
+<div class="hidden md:flex flex-col md:w-1/2 lg:w-3/5 bg-primary relative overflow-hidden h-screen" data-alt="A sophisticated corporate office interior bathed in natural daylight, viewed from a wide angle. The space features modern architectural elements, glass partitions, and sleek minimalist furniture in neutral tones. A subtle, high-quality blue tint overlays the image to align with a professional HR management brand identity, evoking trust, efficiency, and a forward-thinking enterprise environment." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAkkEOyuv45oue8VcyO8ziXevdbWOkgnbpjYGqWXDYHW7K6sZaBUbnG7Lwf8QgPRpabNUTVEVxAANXB5f7UgAk-UlsPFf4NT74DXMHVQzriSuuPrsjroqlkriSrfoXRzDoIipnRwZ5izBRfNjzvz_EIw4FJ9BqbKRPSUEbQ7bpRW2AM-oifE2pEbT_XLnXxY9zUXsbjy8JrwaHMYq3Yi4EEgXagAt2EoptmYAtcc3ACzTcDEVzkd5-0UA')">
+<!-- Gradient Overlay -->
+<div class="absolute inset-0 bg-gradient-to-t from-primary to-primary/40 mix-blend-multiply"></div>
+<div class="absolute inset-0 bg-gradient-to-r from-primary/80 to-transparent"></div>
+<!-- Content Overlay -->
+<div class="relative z-10 p-margin-desktop flex flex-col h-full justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-white text-[32px]">corporate_fare</span>
+<span class="font-headline-md text-headline-md text-white">Attendance Pro</span>
+</div>
+<div class="mb-xl">
+<h1 class="font-display-lg text-display-lg text-white mb-sm">Empowering your workforce.</h1>
+<p class="font-body-lg text-body-lg text-primary-fixed max-w-md">Secure, seamless access to your enterprise HR portal. Streamline your workday with our intuitive management tools.</p>
+</div>
+</div>
+</div>
+<!-- Right Side: Login Form -->
+<div class="w-full md:w-1/2 lg:w-2/5 flex flex-col h-screen overflow-y-auto bg-surface relative shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.05)] md:z-20">
+<!-- Mobile Header (Visible only on mobile) -->
+<div class="md:hidden flex items-center justify-center p-lg bg-primary text-white gap-2 shadow-sm">
+<span class="material-symbols-outlined text-[24px]">corporate_fare</span>
+<span class="font-headline-md text-headline-md">Attendance Pro</span>
+</div>
+<div class="flex-1 flex flex-col justify-center px-margin-mobile py-xl md:px-margin-desktop md:py-margin-desktop max-w-[480px] w-full mx-auto">
+<div class="mb-lg text-center md:text-left">
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile md:font-headline-lg md:text-headline-lg text-on-surface mb-xs">Welcome Back</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Please sign in to access your HRMS portal.</p>
+</div>
+<!-- SSO Button -->
+<button class="w-full flex items-center justify-center gap-md py-3 px-4 bg-white border border-outline-variant rounded-lg hover:bg-surface-container-low transition-colors duration-200 mb-lg shadow-sm">
+<svg height="20" viewbox="0 0 21 21" width="20" xmlns="http://www.w3.org/2000/svg">
+<path d="M10 0H0V10H10V0Z" fill="#F25022"></path>
+<path d="M21 0H11V10H21V0Z" fill="#7FBA00"></path>
+<path d="M10 11H0V21H10V11Z" fill="#00A4EF"></path>
+<path d="M21 11H11V21H21V11Z" fill="#FFB900"></path>
+</svg>
+<span class="font-label-md text-label-md text-on-surface">Login with Microsoft SSO</span>
+</button>
+<!-- Divider -->
+<div class="flex items-center mb-lg">
+<div class="flex-1 border-t border-outline-variant"></div>
+<span class="px-sm font-body-sm text-body-sm text-outline">or continue with email</span>
+<div class="flex-1 border-t border-outline-variant"></div>
+</div>
+<!-- Login Form -->
+<form action="#" class="flex flex-col gap-md" method="POST">
+<!-- Email Field -->
+<div class="flex flex-col gap-unit">
+<label class="font-label-md text-label-md text-on-surface" for="email">Email or Employee ID</label>
+<div class="relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
+<span class="material-symbols-outlined text-[20px]">person</span>
+</div>
+<input class="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-DEFAULT focus:ring-2 focus:ring-primary focus:border-primary font-body-md text-body-md text-on-surface transition-shadow" id="email" name="email" placeholder="e.g. john.doe@company.com" required="" type="text"/>
+</div>
+</div>
+<!-- Password Field -->
+<div class="flex flex-col gap-unit">
+<label class="font-label-md text-label-md text-on-surface" for="password">Password</label>
+<div class="relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
+<span class="material-symbols-outlined text-[20px]">lock</span>
+</div>
+<input class="w-full pl-10 pr-12 py-2 bg-white border border-outline-variant rounded-DEFAULT focus:ring-2 focus:ring-primary focus:border-primary font-body-md text-body-md text-on-surface transition-shadow" id="password" name="password" placeholder="Enter your password" required="" type="password"/>
+<button class="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-on-surface transition-colors" onclick="const p=document.getElementById('password'); const i=this.querySelector('span'); if(p.type==='password'){p.type='text'; i.innerText='visibility_off';}else{p.type='password'; i.innerText='visibility';}" type="button">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</div>
+</div>
+<!-- Remember Me & Forgot Password -->
+<div class="flex items-center justify-between mt-sm">
+<label class="flex items-center gap-2 cursor-pointer group">
+<div class="relative flex items-center">
+<input class="peer h-4 w-4 border-outline-variant rounded-[4px] text-primary focus:ring-primary focus:ring-offset-0 bg-white transition-all cursor-pointer" type="checkbox"/>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Remember Me</span>
+</label>
+<a class="font-label-md text-label-md text-primary hover:text-primary-container transition-colors" href="#">Forgot Password?</a>
+</div>
+<!-- Submit Button -->
+<button class="mt-sm w-full py-3 bg-primary hover:bg-primary-container text-on-primary font-label-md text-label-md rounded-lg shadow-sm hover:shadow-[0px_4px_6px_-1px_rgba(0,0,0,0.1)] transition-all duration-200 flex items-center justify-center gap-2" type="submit">
+                    Sign In
+                    <span class="material-symbols-outlined text-[18px]">login</span>
+</button>
+</form>
+</div>
+<!-- Footer -->
+<div class="p-lg mt-auto flex flex-col md:flex-row items-center justify-center gap-md border-t border-surface-variant text-center">
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Contact Support</a>
+<span class="hidden md:block text-surface-variant text-[12px]">•</span>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<span class="hidden md:block text-surface-variant text-[12px]">•</span>
+<span class="font-body-sm text-body-sm text-outline">© 2024 Attendance Pro</span>
+</div>
+</div>
+</body></html>

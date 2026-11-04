@@ -1,0 +1,159 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-on-background font-sans antialiased;
+  }
+
+  /* Focus is never removed, only restyled. Keyboard users need to see it. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-surface;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    user-select: none;
+  }
+
+  /* ---------------------------------------------------------------
+     Phones and tablets
+     --------------------------------------------------------------- */
+
+  /*
+   * iOS Safari zooms the entire page when a focused field's font-size is
+   * under 16px, and then leaves it zoomed. Every input here is 14px by
+   * design, so without this the first tap on any form — including sign-in —
+   * scales the page up and the layout no longer fits.
+   *
+   * Bumping to 16px below the sm breakpoint fixes it at the only place it
+   * matters. Desktop keeps the 14px the design system specifies.
+   */
+  @media (max-width: 639px) {
+    input:not([type='checkbox']):not([type='radio']),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+
+  /*
+   * Finger-sized targets, on finger-driven devices only.
+   *
+   * hover: none AND pointer: coarse means a finger with no mouse — a phone or
+   * a tablet. A touchscreen laptop matches `pointer: coarse` on its own but
+   * also has a trackpad, so it reports `hover: hover` and keeps the compact
+   * desktop layout, which is what somebody using it with a trackpad wants.
+   *
+   * 44px is Apple's minimum; Material asks for 48dp, and the difference is
+   * not worth maintaining two sets of rules.
+   *
+   * Checkboxes and radios are the worst offenders — 16px square, which is a
+   * quarter of the area a thumb needs.
+   */
+  @media (hover: none) and (pointer: coarse) {
+    button,
+    [role='button'],
+    a.btn-primary,
+    a.btn-secondary,
+    a.btn-ghost,
+    input:not([type='checkbox']):not([type='radio']),
+    select {
+      min-height: 44px;
+    }
+
+    input[type='checkbox'],
+    input[type='radio'] {
+      width: 20px;
+      height: 20px;
+    }
+
+    /*
+     * The label is the real target for a checkbox: it is what a thumb
+     * actually lands on, and it is already next to the box.
+     */
+    label:has(> input[type='checkbox']),
+    label:has(> input[type='radio']) {
+      min-height: 44px;
+      align-items: center;
+    }
+  }
+
+  /*
+   * The notch, the rounded corners and the home indicator.
+   *
+   * env() returns zero unless index.html asks for viewport-fit=cover, which
+   * it now does. Used by the app shell and by anything pinned to an edge;
+   * on Android and on desktop these all resolve to zero and change nothing.
+   */
+  .pad-safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .pad-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pad-safe-x {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+@layer components {
+  /* Level 1 surface from the design system: white on a 1px slate border. */
+  .card {
+    @apply bg-surface-container-lowest border border-outline-variant/60 rounded-lg;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-DEFAULT bg-primary px-4 py-2.5
+           text-label-md text-on-primary transition-all duration-200
+           hover:bg-primary-container hover:shadow-raised
+           disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-DEFAULT border border-outline-variant
+           bg-surface-container-lowest px-4 py-2.5 text-label-md text-on-surface transition-colors
+           hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-DEFAULT px-3 py-2
+           text-label-md text-primary transition-colors hover:bg-primary-fixed/50;
+  }
+
+  .field-label {
+    @apply block text-label-md text-on-surface mb-unit;
+  }
+
+  .field-input {
+    @apply w-full rounded-DEFAULT border border-outline-variant bg-surface-container-lowest
+           px-4 py-2.5 text-body-md text-on-surface placeholder:text-outline
+           transition-shadow focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30
+           disabled:cursor-not-allowed disabled:bg-surface-container;
+  }
+
+  .field-input-error {
+    @apply border-error focus:border-error focus:ring-error/30;
+  }
+
+  .field-error {
+    @apply mt-unit flex items-center gap-1 text-body-sm text-error;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

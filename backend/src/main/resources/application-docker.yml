@@ -1,0 +1,18 @@
+spring:
+  jpa:
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    com.company.attendance: INFO
+    org.hibernate.SQL: WARN
+
+app:
+  security:
+    refresh-cookie-secure: false
+
+springdoc:
+  swagger-ui:
+    enabled: false

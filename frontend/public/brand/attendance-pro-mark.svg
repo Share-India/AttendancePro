@@ -1,0 +1,26 @@
+<!--
+  Tab and home-screen icon. Same mark as AppLogo, with two differences a
+  favicon needs: fixed colours, because nothing here inherits a text colour,
+  and an opaque white plate, because a navy ring alone would vanish against
+  a dark browser chrome.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <rect width="48" height="48" rx="11" fill="#ffffff" />
+  <g transform="translate(24 24) scale(0.82) translate(-24 -24)">
+    <path
+      d="M41.39 19.34A18 18 0 1 1 28.66 6.61"
+      fill="none"
+      stroke="#00236f"
+      stroke-width="5"
+      stroke-linecap="round"
+    />
+    <path
+      d="M14.5 24.5 21 31 38.5 9.5"
+      fill="none"
+      stroke="#27c38a"
+      stroke-width="5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+</svg>
