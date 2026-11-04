@@ -1,0 +1,40 @@
+# TLS edge for the Lightsail instance.
+#
+# Caddy rather than certbot-plus-nginx: it obtains and renews the Let's
+# Encrypt certificate on its own, with no cron job to forget and no renewal
+# hook to get wrong. The application's own nginx keeps serving the SPA and
+# proxying /api exactly as it does locally — this sits in front of it and
+# terminates TLS, so that tuned config is untouched.
+#
+# DOMAIN comes from the environment. Caddy needs a real hostname to get a
+# certificate; it cannot issue one for a bare IP address.
+
+{
+	email {$ACME_EMAIL}
+	# Cuts the default 2048-byte-ish verbose logging down to what is useful
+	# on a 4 GB box that is also running MySQL and a JVM.
+	log {
+		level INFO
+	}
+}
+
+{$DOMAIN} {
+	encode gzip
+
+	# HSTS is set here rather than in the app's nginx, because this is the
+	# only hop that actually speaks TLS. Six months, and subdomains are not
+	# included — there is no guarantee every future subdomain is HTTPS.
+	header {
+		Strict-Transport-Security "max-age=15768000"
+		-Server
+	}
+
+	reverse_proxy frontend:80 {
+		# The app's nginx forwards these on to Spring Boot. Without the
+		# proto header the backend believes the original request was plain
+		# HTTP, which matters the moment anything generates an absolute URL.
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+}

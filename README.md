@@ -7,6 +7,7 @@ company holiday calendar.
 React (Vite · TypeScript · Tailwind) → Spring Boot REST API → MySQL.
 
 Architecture lives in [`docs/`](docs/README.md). Read that before changing anything structural.
+Deployment on AWS Lightsail is [`docs/08-lightsail-deployment.md`](docs/08-lightsail-deployment.md).
 
 ## What it does
 

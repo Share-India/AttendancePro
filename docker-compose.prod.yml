@@ -1,0 +1,90 @@
+# Production overlay for a single AWS Lightsail instance.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What this changes against the base file, and why each one matters on a box
+# with a public IP:
+#
+#   * Only Caddy is reachable from outside. The base file binds MySQL, the
+#     API and the SPA to 127.0.0.1, so they stay available for debugging on
+#     the box and invisible from the internet. That matters more than it
+#     sounds: Docker publishes ports by writing its own iptables rules, which
+#     bypass ufw entirely, so a 0.0.0.0 binding here would put the database
+#     on the public interface no matter what the host firewall says.
+#   * The prod profile, which is not in the validator's relaxed set, so the
+#     application refuses to start on a placeholder secret, an insecure
+#     refresh cookie, a wildcard CORS origin or an enabled Swagger UI.
+#   * Memory ceilings. The JVM is told to take 75% of what it can see, and
+#     without a limit that is 75% of the whole host — which starves MySQL on
+#     a 4 GB instance and gets the container OOM-killed under load.
+#   * Log rotation. The default json-file driver grows without bound and
+#     fills a 60 GB disk eventually; nobody notices until MySQL cannot write.
+
+services:
+  mysql:
+    mem_limit: 1200m
+    environment:
+      # The base file's default would otherwise apply.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:?set DB_NAME}
+      MYSQL_USER: ${DB_USERNAME:?set DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+      # Default is 128 MB, which on a shared 4 GB box leaves MySQL thrashing.
+      - --innodb-buffer-pool-size=512M
+    logging: &logging
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+
+  backend:
+    mem_limit: 1600m
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # prod sets refresh-cookie-secure true in application-prod.yml; this is
+      # here so the value is visible in one place with the rest of the stack.
+      REFRESH_COOKIE_SECURE: 'true'
+      SWAGGER_ENABLED: 'false'
+      # Same origin through Caddy and nginx, so no cross-origin request is
+      # ever made. The validator rejects '*', and an empty list is correct
+      # here rather than a lie about which origins are allowed.
+      CORS_ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN}
+      COMPANY_TIMEZONE: ${COMPANY_TIMEZONE:-Asia/Kolkata}
+      # bcrypt strength is not settable here: application.yml fixes it at 12,
+      # which is what the validator wants anyway. An env var for it would
+      # read like a knob that works.
+    logging: *logging
+
+  frontend:
+    # Reached by Caddy over the compose network; its loopback binding
+    # from the base file is only for curling it on the box.
+    mem_limit: 128m
+    logging: *logging
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: attendance-caddy
+    restart: unless-stopped
+    depends_on: [frontend]
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to the hostname the certificate is for}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for Let's Encrypt expiry notices}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates survive a recreate. Without this volume every redeploy
+      # requests a new certificate and Let's Encrypt rate-limits the domain
+      # after five in a week.
+      - caddy-data:/data
+      - caddy-config:/config
+    mem_limit: 128m
+    logging: *logging
+    networks: [attendance]
+
+volumes:
+  caddy-data:
+  caddy-config:

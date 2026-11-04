@@ -11,6 +11,9 @@ Enterprise HRMS attendance platform. React (Vite + TypeScript) SPA → Spring Bo
 | 03 | [Database Design](03-database-design.md) | Full MySQL schema, relationships, indexes, ER explanation |
 | 04 | [Workflows](04-workflows.md) | Punch-in / punch-out, geofencing, leave approval, regularization |
 | 05 | [API Design](05-api-design.md) | REST conventions, response envelope, error codes, endpoint catalogue |
+| 06 | [Deployment](06-deployment.md) | The startup gate, bootstrap account, health probes, backups, upgrades |
+| 07 | [Exam Module](07-exam-module-plan.md) | Weekly study exams: data model, scoring, retakes |
+| 08 | [Lightsail Deployment](08-lightsail-deployment.md) | Instance sizing, firewall, DNS, TLS, first deploy, operations |
 
 ## Technology decisions (locked unless you say otherwise)
 
