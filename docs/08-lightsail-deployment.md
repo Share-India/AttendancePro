@@ -188,11 +188,35 @@ ssl_certificate     /etc/ssl/cloudflare/attendance.pem;
 ssl_certificate_key /etc/ssl/cloudflare/attendance.key;
 ```
 
-**If the proxy stays on, check Bot Fight Mode.** The same protection that
-blocked the ACME challenge can challenge the SPA's own API calls, which
-arrive as XHR without a browser navigation. The symptom is an application
-that loads and then fails on every request. Either disable it for this
-hostname or add a rule skipping `/api/*`.
+**If the proxy stays on, two things must be dealt with.**
+
+*The challenge page.* A hostname returning `Just a moment...` with a 403 is
+running an interactive JS challenge. A person in a browser passes it and gets
+a clearance cookie, so the site looks fine; nothing programmatic does, which
+is why ACME fails. The same applies to the SPA's own API calls — they are
+XHR, with no browser navigation to challenge. Check what the API actually
+returns before trusting it:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}
+' -X POST   https://attendance.shareindiainsurance.com/api/v1/auth/login   -H 'Content-Type: application/json' -d '{}'
+```
+
+`400` is the validator rejecting an empty body, which means the request
+reached the application. `403` means Cloudflare answered instead. Turn the
+challenge off for this hostname, or scope a rule to skip `/api/*`.
+
+*Client addresses.* Behind any proxy, `$remote_addr` is the proxy. This
+application records an IP against every punch event, every sign-in attempt
+and every audit entry, so without the real one each of those columns fills
+with a Cloudflare edge address. That is worse than an empty column, because
+it looks like evidence. Install the trusted ranges and uncomment the include
+in the vhost:
+
+```bash
+sudo deploy/cloudflare-real-ip.sh
+sudo nginx -t && sudo systemctl reload nginx
+```
 
 ### With this stack's own TLS
 
