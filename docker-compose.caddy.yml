@@ -1,0 +1,38 @@
+# TLS edge for an instance this stack has to itself.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  -f docker-compose.caddy.yml up -d --build
+#
+# Caddy takes 80 and 443 and obtains its own Let's Encrypt certificate, with
+# no renewal cron to forget. If something else on the box already holds those
+# ports, use docker-compose.behind-proxy.yml instead — two things cannot bind
+# the same port, and the deploy fails at the last container.
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: attendance-caddy
+    restart: unless-stopped
+    depends_on: [frontend]
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to the hostname the certificate is for}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for Let's Encrypt expiry notices}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates survive a recreate. Without this volume every redeploy
+      # requests a new one and Let's Encrypt rate-limits the domain after
+      # five in a week.
+      - caddy-data:/data
+      - caddy-config:/config
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+    networks: [attendance]
+
+volumes:
+  caddy-data:
+  caddy-config:

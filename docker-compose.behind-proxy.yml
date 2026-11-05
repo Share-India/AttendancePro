@@ -1,0 +1,21 @@
+# For an instance where something else already owns 80 and 443.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  -f docker-compose.behind-proxy.yml up -d --build
+#
+# No Caddy. The SPA container is published on a loopback port and whatever
+# already terminates TLS on this box — host nginx, in our case — proxies the
+# hostname to it. That proxy keeps owning the certificate, so nothing here
+# touches the other application's configuration.
+#
+# Loopback only, never 0.0.0.0: the port exists for the proxy on this same
+# machine, and Docker's iptables rules bypass ufw, so a 0.0.0.0 binding would
+# put the SPA on the public interface beside the proxy rather than behind it.
+#
+# Pick a port nothing else uses. Check before you commit to one:
+#   sudo ss -tlnp "( sport = :${FRONTEND_PORT:-8091} )"
+
+services:
+  frontend:
+    ports:
+      - '127.0.0.1:${FRONTEND_PORT:-8091}:80'

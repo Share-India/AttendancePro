@@ -1,19 +1,22 @@
-# Production overlay for a single AWS Lightsail instance.
+# Production hardening. Pair it with exactly one edge overlay, because this
+# file publishes nothing and so serves nothing on its own:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   # The instance is ours alone — Caddy takes 80/443 and handles TLS
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml #                  -f docker-compose.caddy.yml up -d --build
+#
+#   # Something else already owns 80/443 — an existing proxy fronts us
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml #                  -f docker-compose.behind-proxy.yml up -d --build
 #
 # What this changes against the base file, and why each one matters on a box
 # with a public IP:
 #
-#   * Only Caddy claims a host port. MySQL, the API and the SPA publish
-#     nothing at all — they reach each other over the compose network, and
-#     anything you need from them on the box is one `docker compose exec`
-#     away. That avoids both failure modes of publishing: colliding with
-#     whatever else runs on a shared instance, and exposing a database if the
-#     bind address is ever wrong. Docker writes its own iptables rules and
-#     bypasses ufw, so a stray 0.0.0.0 binding is public whatever the host
-#     firewall says. Local development adds the ports back through
-#     docker-compose.dev.yml.
+#   * Nothing publishes a host port. These containers only ever need to
+#     reach each other, over the compose network, and anything wanted from
+#     them on the box is one `docker compose exec` away. That avoids both
+#     failure modes of publishing: colliding with whatever else runs on a
+#     shared instance, and exposing a database if the bind address is ever
+#     wrong — Docker writes its own iptables rules and bypasses ufw, so a
+#     stray 0.0.0.0 binding is public whatever the host firewall says.
 #   * The prod profile, which is not in the validator's relaxed set, so the
 #     application refuses to start on a placeholder secret, an insecure
 #     refresh cookie, a wildcard CORS origin or an enabled Swagger UI.
@@ -65,29 +68,3 @@ services:
     # from the base file is only for curling it on the box.
     mem_limit: 128m
     logging: *logging
-
-  caddy:
-    image: caddy:2.8-alpine
-    container_name: attendance-caddy
-    restart: unless-stopped
-    depends_on: [frontend]
-    ports:
-      - '80:80'
-      - '443:443'
-    environment:
-      DOMAIN: ${DOMAIN:?set DOMAIN to the hostname the certificate is for}
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for Let's Encrypt expiry notices}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      # Certificates survive a recreate. Without this volume every redeploy
-      # requests a new certificate and Let's Encrypt rate-limits the domain
-      # after five in a week.
-      - caddy-data:/data
-      - caddy-config:/config
-    mem_limit: 128m
-    logging: *logging
-    networks: [attendance]
-
-volumes:
-  caddy-data:
-  caddy-config:

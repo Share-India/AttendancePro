@@ -79,8 +79,14 @@ cp .env.production.example .env
 openssl rand -base64 64        # paste as JWT_SECRET
 nano .env
 
-# 4. Up. The first run builds both images and takes several minutes.
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# 4. Up. Pick ONE edge overlay. The first run builds both images and takes
+#    several minutes.
+#
+#    Instance is ours alone — Caddy takes 80/443 and handles TLS:
+docker compose -f docker-compose.yml -f docker-compose.prod.yml                -f docker-compose.caddy.yml up -d --build
+#
+#    Something else already owns 80/443 — see "Sharing the instance" below:
+#    ... -f docker-compose.behind-proxy.yml up -d --build
 
 # 5. Watch the gate. A refusal names exactly what is wrong.
 docker compose logs -f backend
@@ -113,11 +119,8 @@ sudo ss -tlnp '( sport = :80 or sport = :443 or sport = :3306 )'
 
 There are three honest ways out, in increasing order of effort:
 
-1. **Let the existing reverse proxy front this too.** If the other
-   application already runs nginx, Caddy or Traefik on 80/443, add a virtual
-   host for this hostname pointing at this stack, drop the `caddy` service
-   from the compose command, and publish the frontend on a free loopback port
-   instead. The existing proxy keeps owning TLS.
+1. **Let the existing reverse proxy front this too** — see below. Least
+   disruptive: the other application's configuration is never touched.
 2. **Let Caddy front both.** Add the other application's hostname to
    `deploy/Caddyfile` as a second site block and stop its proxy. Caddy then
    handles certificates for both, which is less to maintain than two proxies.
@@ -127,6 +130,46 @@ There are three honest ways out, in increasing order of effort:
 
 MySQL needs no decision: this stack's database is not published, so it cannot
 collide with another MySQL on the box, and the two never see each other.
+
+### Behind an existing host nginx
+
+Swap the Caddy overlay for the behind-proxy one. Caddy never starts, so it
+never asks for the ports that are taken.
+
+```bash
+export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml:docker-compose.behind-proxy.yml
+docker compose up -d --build
+```
+
+That publishes the SPA container on `127.0.0.1:8091` — nothing on the public
+interface. Confirm it answers before touching nginx:
+
+```bash
+curl -I http://127.0.0.1:8091          # 200 from the SPA
+```
+
+Then add the virtual host and let certbot put TLS on it:
+
+```bash
+sudo cp deploy/nginx-attendance.conf /etc/nginx/sites-available/attendance
+sudo ln -s /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d attendance.shareindia.co.in
+```
+
+`nginx -t` before the reload is the whole safety margin here: a bad config
+file would otherwise take the other application down with it on reload.
+
+certbot rewrites the vhost in place, adding `listen 443 ssl`, the certificate
+paths and a redirect from port 80, and installs its own renewal timer. The
+file then no longer matches the copy in this repository, which is expected.
+
+**The scheme has to survive three hops.** Host nginx terminates TLS and is
+the only hop that knows the request was HTTPS, so it sets
+`X-Forwarded-Proto`. The container's nginx passes through whatever arrives
+rather than overwriting it with its own `$scheme`, and Spring Boot reads it
+from there. Drop that header anywhere in the chain and the application
+believes every request came in over plain HTTP.
 
 ## Operations
 
