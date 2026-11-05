@@ -52,15 +52,16 @@ Restrict SSH to your own address if your office IP is stable.
 
 ## DNS
 
-Point the hostname at the static IP **before** the first start:
+Point the hostname at the static IP **before** asking for a certificate:
 
 ```
-attendance.shareindia.co.in.   A   <static IP>
+attendance.shareindiainsurance.com.   A   <static IP>
 ```
 
-Caddy requests the certificate on startup and cannot get one for a bare IP
-address. If DNS has not propagated the first boot fails the ACME challenge,
-and Let's Encrypt rate-limits to five failures per hostname per hour.
+Whichever issues it — certbot on the host or Caddy in the stack — the ACME
+challenge arrives over port 80 at that name, and no certificate exists for a
+bare IP address. If DNS has not propagated the request fails, and Let's
+Encrypt rate-limits to five failures per hostname per hour.
 
 ## First deploy
 
@@ -79,20 +80,19 @@ cp .env.production.example .env
 openssl rand -base64 64        # paste as JWT_SECRET
 nano .env
 
-# 4. Up. Pick ONE edge overlay. The first run builds both images and takes
-#    several minutes.
-#
-#    Instance is ours alone — Caddy takes 80/443 and handles TLS:
-docker compose -f docker-compose.yml -f docker-compose.prod.yml                -f docker-compose.caddy.yml up -d --build
-#
-#    Something else already owns 80/443 — see "Sharing the instance" below:
-#    ... -f docker-compose.behind-proxy.yml up -d --build
+# 4. Up. The first run builds both images and takes several minutes.
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 # 5. Watch the gate. A refusal names exactly what is wrong.
 docker compose logs -f backend
 ```
 
-Flyway applies `V1`–`V20` against the empty database on first start.
+Flyway applies every migration against the empty database on first start.
+
+Step 4 starts no TLS edge: on an instance that already serves HTTPS, the
+existing proxy fronts this stack — see **Sharing the instance** below for the
+virtual host and certbot. Where nothing else owns 80 and 443, add
+`--profile edge-tls` to that command and Caddy handles TLS itself.
 
 ### Immediately afterwards
 
@@ -107,69 +107,76 @@ Do this before anyone else is told the URL.
 
 ## Sharing the instance with another application
 
-Nothing in this stack publishes a host port except Caddy, on 80 and 443. If
-something else on the instance already serves HTTP there, Caddy cannot start
-and neither can the deploy.
+Nothing in this stack publishes a host port except Caddy, and Caddy is behind
+a compose profile so it does not start unless asked. On an instance that
+already serves HTTPS, leave it off and let the existing proxy front this too.
 
-Find out what holds them:
+Find out what holds the ports:
 
 ```bash
-sudo ss -tlnp '( sport = :80 or sport = :443 or sport = :3306 )'
+sudo ss -tlnp '( sport = :80 or sport = :443 )'
 ```
 
-There are three honest ways out, in increasing order of effort:
+### Behind the host's own nginx
 
-1. **Let the existing reverse proxy front this too** — see below. Least
-   disruptive: the other application's configuration is never touched.
-2. **Let Caddy front both.** Add the other application's hostname to
-   `deploy/Caddyfile` as a second site block and stop its proxy. Caddy then
-   handles certificates for both, which is less to maintain than two proxies.
-3. **A second Lightsail instance.** Cleanest separation, and the right answer
-   once either application matters enough that a restart of one must not
-   touch the other.
-
-MySQL needs no decision: this stack's database is not published, so it cannot
-collide with another MySQL on the box, and the two never see each other.
-
-### Behind an existing host nginx
-
-Swap the Caddy overlay for the behind-proxy one. Caddy never starts, so it
-never asks for the ports that are taken.
+This is the default: run the stack with no profile and nothing contends for
+80 or 443. The SPA is published on `127.0.0.1:8081`, which only the box can
+reach.
 
 ```bash
-export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml:docker-compose.behind-proxy.yml
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-That publishes the SPA container on `127.0.0.1:8091` — nothing on the public
-interface. Confirm it answers before touching nginx:
+Install the virtual host, which touches no other server block — nginx selects
+between them on `server_name` alone, so the application already on this box
+is unaffected:
 
 ```bash
-curl -I http://127.0.0.1:8091          # 200 from the SPA
-```
-
-Then add the virtual host and let certbot put TLS on it:
-
-```bash
-sudo cp deploy/nginx-attendance.conf /etc/nginx/sites-available/attendance
+sudo cp deploy/nginx-host-vhost.conf /etc/nginx/sites-available/attendance
 sudo ln -s /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d attendance.shareindia.co.in
 ```
 
-`nginx -t` before the reload is the whole safety margin here: a bad config
-file would otherwise take the other application down with it on reload.
+Then let certbot add TLS to that file:
 
-certbot rewrites the vhost in place, adding `listen 443 ssl`, the certificate
-paths and a redirect from port 80, and installs its own renewal timer. The
-file then no longer matches the copy in this repository, which is expected.
+```bash
+sudo certbot --nginx -d attendance.shareindiainsurance.com
+```
 
-**The scheme has to survive three hops.** Host nginx terminates TLS and is
-the only hop that knows the request was HTTPS, so it sets
-`X-Forwarded-Proto`. The container's nginx passes through whatever arrives
-rather than overwriting it with its own `$scheme`, and Spring Boot reads it
-from there. Drop that header anywhere in the chain and the application
-believes every request came in over plain HTTP.
+certbot rewrites the block to listen on 443 with the certificate and adds a
+redirect from 80. Let it: hand-writing that skips the renewal timer, which is
+the part that matters in ninety days.
+
+**The header that has to survive all three hops.** TLS is terminated by the
+host's nginx, so that is the only hop that knows the request was encrypted.
+It sets `X-Forwarded-Proto`; the container's nginx forwards what arrives
+rather than overwriting it with its own plain-HTTP scheme; the backend reads
+it. Change any one of those and the application believes it is serving over
+plain HTTP.
+
+### With this stack's own TLS
+
+Only where nothing else owns 80 and 443:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml   --profile edge-tls up -d --build
+```
+
+Caddy then obtains and renews the certificate itself and the host needs no
+nginx at all.
+
+### The other options
+
+**Move the other application behind Caddy** — add its hostname as a second
+site block in `deploy/Caddyfile` and stop its proxy. One proxy instead of
+two, but it means touching a running application.
+
+**A second instance** — the right answer once either application matters
+enough that restarting one must not disturb the other.
+
+MySQL needs no decision either way: this stack's database is not published,
+so it cannot collide with another MySQL on the box and the two never see
+each other.
 
 ## Operations
 
