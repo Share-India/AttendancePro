@@ -163,6 +163,109 @@ Automatic, roughly 30 days before expiry. Nothing to schedule. The two ways it
 breaks are DNS moving away from the instance and port 80 being closed — Caddy
 needs it for the renewal challenge even though all traffic is on 443.
 
+## Stopping, removing, and moving to another instance
+
+### Know which command destroys the database
+
+The whole database lives in a Docker named volume. Four commands look alike
+and differ enormously:
+
+| Command | Containers | Volumes — your data |
+|---|---|---|
+| `docker compose stop` | stopped, still exist | untouched |
+| `docker compose down` | removed | **untouched** |
+| `docker compose down -v` | removed | **deleted — everything gone** |
+| `rm -rf /var/lib/docker` | gone | **deleted — everything gone** |
+
+`down` is safe and is what you want for a restart or a rebuild. The `-v` is
+the one that cannot be undone. Note that purging the Docker packages does
+*not* remove `/var/lib/docker`; deleting that directory is a separate,
+deliberate act.
+
+### Always take a dump off the box first
+
+Before stopping anything you intend to remove, and before deleting an
+instance, get the data somewhere else. This takes seconds and is the
+difference between a migration and an incident.
+
+```bash
+cd ~/AttendancePro && . ./.env
+docker compose exec -T mysql   mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --single-transaction     --routines --triggers "$DB_NAME" | gzip > ~/attendance-final.sql.gz
+
+# Then copy it, and .env, to your own machine — not to the same instance.
+# From your laptop:
+#   scp -i LightsailKey.pem ubuntu@<ip>:~/attendance-final.sql.gz .
+#   scp -i LightsailKey.pem ubuntu@<ip>:~/AttendancePro/.env ./env-backup
+```
+
+`.env` matters as much as the dump: without `MYSQL_ROOT_PASSWORD` the dump
+restores fine, but without `JWT_SECRET` every existing session is invalidated
+the moment you start elsewhere.
+
+### Stopping without removing
+
+```bash
+cd ~/AttendancePro
+docker compose stop          # pause; `docker compose start` resumes
+docker compose down          # remove containers, keep the data volume
+docker compose up -d         # back up again, same data
+```
+
+Stopping the Lightsail instance itself also works and costs less — but only
+if a static IP is attached, or the public IP changes and DNS stops matching.
+
+### Removing Docker entirely from the instance
+
+Do the dump first. Then:
+
+```bash
+cd ~/AttendancePro && docker compose down
+sudo apt purge -y docker-ce docker-ce-cli containerd.io                   docker-buildx-plugin docker-compose-plugin
+sudo apt autoremove -y
+
+# This is the irreversible step — every volume, image and container.
+sudo rm -rf /var/lib/docker /var/lib/containerd /etc/docker
+sudo rm -f /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.asc
+```
+
+### Moving to another instance
+
+Two routes. Pick by whether you want the same box elsewhere or a clean one.
+
+**Snapshot, if you are staying inside Lightsail.** Instance → Snapshots →
+Create snapshot, then "Create new instance from snapshot". Everything comes
+with it — Docker, volumes, certificates, cron. Attach the static IP to the
+new instance (detach from the old one first; an IP can only be on one), and
+nothing else changes. Simplest, and the right answer for resizing.
+
+**Dump and restore, for a different host or a clean start.** On the new
+machine, follow *First deploy* above as far as filling in `.env` — reuse the
+same `JWT_SECRET` and database passwords from the old one — then:
+
+```bash
+# Bring up only the database, so Flyway has not run yet.
+docker compose up -d mysql
+sleep 20
+
+gunzip -c attendance-final.sql.gz | docker compose exec -T mysql   mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME"
+
+# Now the rest. Flyway sees a schema already at its current version and
+# applies nothing, which is the intended outcome.
+docker compose up -d --build
+```
+
+Restoring into a database Flyway has *already* migrated fails on existing
+tables, which is why the restore goes in before the backend's first start.
+
+**Then move DNS.** Lower the record's TTL to 300 seconds a day beforehand, so
+the switch takes minutes rather than hours. Point the A record at the new IP.
+Caddy on the new instance requests its own certificate on first start — the
+old one does not transfer, and does not need to.
+
+Keep the old instance stopped, not deleted, until people have used the new
+one for a day. A stopped instance with a snapshot costs almost nothing and is
+the only cheap way to undo a bad migration.
+
 ## What this does not give you
 
 Stated plainly, because each is a decision rather than an oversight:
