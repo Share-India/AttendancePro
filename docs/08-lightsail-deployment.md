@@ -154,7 +154,48 @@ rather than overwriting it with its own plain-HTTP scheme; the backend reads
 it. Change any one of those and the application believes it is serving over
 plain HTTP.
 
+### When the hostname is proxied through Cloudflare
+
+If the DNS record is orange-clouded, `certbot --nginx` fails with a 403 and a
+`Cf-Mitigated: challenge` header. Cloudflare answers the ACME challenge with
+a bot-protection page; the request never reaches this instance, so nothing
+configured here can fix it. Confirm with:
+
+```bash
+curl -sI http://attendance.shareindiainsurance.com/.well-known/acme-challenge/test | grep -i server
+```
+
+`Server: cloudflare` means the proxy is in the way.
+
+Two ways through, and they end up in genuinely different places.
+
+**Turn the proxy off for this hostname.** In Cloudflare DNS, switch the
+record from *Proxied* to *DNS only*. It then resolves to the instance,
+`certbot --nginx` works unchanged, and Let's Encrypt renews itself. You give
+up Cloudflare's DDoS protection and origin-IP hiding for this name.
+
+**Keep the proxy and use a Cloudflare Origin Certificate.** Cloudflare
+already terminates TLS for visitors; what the origin needs is a certificate
+Cloudflare will accept. Generate one under SSL/TLS → Origin Server (free,
+valid fifteen years, no ACME), install it, and set the SSL/TLS mode to
+**Full (strict)**. Anything less than strict leaves the Cloudflare-to-origin
+hop unverified, which is the hop most people forget.
+
+```nginx
+# In the vhost, in place of what certbot would have written:
+listen 443 ssl;
+ssl_certificate     /etc/ssl/cloudflare/attendance.pem;
+ssl_certificate_key /etc/ssl/cloudflare/attendance.key;
+```
+
+**If the proxy stays on, check Bot Fight Mode.** The same protection that
+blocked the ACME challenge can challenge the SPA's own API calls, which
+arrive as XHR without a browser navigation. The symptom is an application
+that loads and then fails on every request. Either disable it for this
+hostname or add a rule skipping `/api/*`.
+
 ### With this stack's own TLS
+
 
 Only where nothing else owns 80 and 443:
 
