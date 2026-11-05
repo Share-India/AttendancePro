@@ -1,0 +1,28 @@
+# Local development overlay.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Publishes the containers on the host so you can reach them directly — point
+# a MySQL client at 3306, curl the API on 8080, open the SPA on 3000.
+#
+# This is deliberately NOT in the base file. The base runs unchanged on a
+# shared server, where claiming a host port either collides with whatever
+# else is on the box or exposes a database, depending on the bind address.
+# Production publishes nothing but Caddy's 80 and 443.
+#
+# Bound to 127.0.0.1 rather than 0.0.0.0 even here: Docker publishes ports by
+# writing its own iptables rules, which bypass ufw, so a 0.0.0.0 binding on a
+# laptop joined to a public network is reachable by that network.
+
+services:
+  mysql:
+    ports:
+      - '127.0.0.1:${DB_PORT:-3306}:3306'
+
+  backend:
+    ports:
+      - '127.0.0.1:${SERVER_PORT:-8080}:8080'
+
+  frontend:
+    ports:
+      - '127.0.0.1:${FRONTEND_PORT:-3000}:80'

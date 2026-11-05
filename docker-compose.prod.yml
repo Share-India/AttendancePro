@@ -5,12 +5,15 @@
 # What this changes against the base file, and why each one matters on a box
 # with a public IP:
 #
-#   * Only Caddy is reachable from outside. The base file binds MySQL, the
-#     API and the SPA to 127.0.0.1, so they stay available for debugging on
-#     the box and invisible from the internet. That matters more than it
-#     sounds: Docker publishes ports by writing its own iptables rules, which
-#     bypass ufw entirely, so a 0.0.0.0 binding here would put the database
-#     on the public interface no matter what the host firewall says.
+#   * Only Caddy claims a host port. MySQL, the API and the SPA publish
+#     nothing at all — they reach each other over the compose network, and
+#     anything you need from them on the box is one `docker compose exec`
+#     away. That avoids both failure modes of publishing: colliding with
+#     whatever else runs on a shared instance, and exposing a database if the
+#     bind address is ever wrong. Docker writes its own iptables rules and
+#     bypasses ufw, so a stray 0.0.0.0 binding is public whatever the host
+#     firewall says. Local development adds the ports back through
+#     docker-compose.dev.yml.
 #   * The prod profile, which is not in the validator's relaxed set, so the
 #     application refuses to start on a placeholder secret, an insecure
 #     refresh cookie, a wildcard CORS origin or an enabled Swagger UI.

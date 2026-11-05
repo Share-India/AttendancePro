@@ -12,8 +12,6 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
       - --default-time-zone=+00:00
-    ports:
-      - '127.0.0.1:${DB_PORT:-3306}:3306'
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -46,8 +44,6 @@ services:
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
       COMPANY_TIMEZONE: ${COMPANY_TIMEZONE:-Asia/Kolkata}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
-    ports:
-      - '127.0.0.1:${SERVER_PORT:-8080}:8080'
     networks: [attendance]
 
   frontend:
@@ -59,8 +55,6 @@ services:
     container_name: attendance-frontend
     restart: unless-stopped
     depends_on: [backend]
-    ports:
-      - '127.0.0.1:${FRONTEND_PORT:-3000}:80'
     networks: [attendance]
 
 volumes:

@@ -36,8 +36,21 @@ openssl rand -base64 64
 
 ## Bring it up
 
+The base file alone publishes no host ports, so pick the overlay for where
+you are running it:
+
 ```bash
-docker compose up -d --build
+# Local: adds MySQL on 3306, the API on 8080 and the SPA on 3000, loopback only
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+# A server: Caddy terminates TLS on 80/443 and nothing else is published
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Setting `COMPOSE_FILE` once saves repeating the flags on every later command:
+
+```bash
+export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
 ```
 
 The backend waits for MySQL to report healthy, then runs Flyway. Watch it land:
