@@ -109,6 +109,38 @@ it a real password and create a named administrator.
 
 Do all of it before anyone else is told the URL.
 
+## Startup on a shared instance
+
+Spring Boot startup is almost entirely class loading and JIT, so it is bound
+by CPU rather than memory. On an instance whose vCPUs are already carrying
+other containers, that shows up as a long boot: measured at **190 seconds**
+on two vCPUs alongside a dozen other containers, against three to five on an
+idle machine.
+
+Nothing is wrong when that happens. What to expect:
+
+- `docker compose ps` reports **`Up (unhealthy)`** while it boots. The
+  healthcheck is given a 300-second start window in the production overlay
+  for exactly this reason; the image's own 45 seconds is sized for a machine
+  that is not sharing.
+- Requests through the proxy answer **502** until it finishes, because the
+  container's nginx has nothing upstream yet.
+
+Confirm rather than guess:
+
+```bash
+docker compose ... logs backend | grep "Started AttendanceApplication"
+```
+
+Memory is the resource that is usually short, and it is worth checking it is
+not this one: `docker stats --no-stream`. The backend settles around 400 MB
+against its 1.5 GB ceiling and MySQL around 500 MB against 1.2 GB, so a box
+with free memory and a slow boot is short of CPU, not RAM, and lowering the
+memory ceilings would make it worse rather than better.
+
+If the boot time becomes a problem — it is paid once per deploy, not per
+request — the answers are more vCPUs or fewer neighbours, not tuning.
+
 ## Sharing the instance with another application
 
 Nothing in this stack publishes a host port except Caddy, and Caddy is behind

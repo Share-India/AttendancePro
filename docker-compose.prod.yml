@@ -58,6 +58,19 @@ services:
       # bcrypt strength is not settable here: application.yml fixes it at 12,
       # which is what the validator wants anyway. An env var for it would
       # read like a knob that works.
+    # The image allows 45 seconds to start, which is generous on a machine
+    # that is not sharing its CPUs. On a shared instance Spring Boot startup
+    # — almost entirely class loading and JIT, so almost entirely CPU — is
+    # whatever is left over: measured at 190 seconds on two vCPUs running a
+    # dozen other containers. The old window marked a perfectly healthy
+    # application unhealthy for three minutes of every deploy, which is how
+    # a health status stops being worth reading.
+    healthcheck:
+      start_period: 300s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/actuator/health/liveness']
     logging: *logging
 
   frontend:
