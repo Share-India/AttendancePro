@@ -81,7 +81,11 @@ openssl rand -base64 64        # paste as JWT_SECRET
 nano .env
 
 # 4. Up. The first run builds both images and takes several minutes.
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#    COMPOSE_FILE in .env means later commands need no -f flags at all —
+#    including `docker compose down`, which is where forgetting them bites:
+#    the base file alone publishes no host ports, so the proxy loses its
+#    upstream and every page turns 502 while the containers look healthy.
+docker compose up -d --build
 
 # 5. Watch the gate. A refusal names exactly what is wrong.
 docker compose logs -f backend
