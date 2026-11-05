@@ -158,15 +158,23 @@ public class StartupSecurityValidator implements ApplicationListener<Application
      */
     private List<String> checkBootstrapAccount() {
         try {
+            // Deactivating counts, because a disabled account cannot be signed
+            // in to whatever its password is. The message has always offered
+            // that as a remedy; until this check honoured it, taking the advice
+            // changed nothing and the application still refused to start.
             boolean untouched = userRepository.findByUsernameIgnoreCase(BOOTSTRAP_USERNAME)
-                    .map(user -> BOOTSTRAP_PASSWORD_HASH.equals(user.getPasswordHash()))
+                    .map(user -> user.isActive()
+                            && BOOTSTRAP_PASSWORD_HASH.equals(user.getPasswordHash()))
                     .orElse(false);
 
             if (untouched) {
                 return List.of("The bootstrap administrator " + BOOTSTRAP_USERNAME
                         + " still has the password published in V6__seed_reference_data.sql. "
                         + "Anyone can sign in with it and set a new one, taking the account. "
-                        + "Rotate it, or disable the account.");
+                        + "Rotate the password or deactivate the account — on a first "
+                        + "deployment the application cannot be signed in to yet, so do it "
+                        + "in the database: see docs/06-deployment.md, 'The bootstrap "
+                        + "account'.");
             }
         } catch (Exception e) {
             // Never let this check itself be the reason the app will not serve.

@@ -94,16 +94,20 @@ existing proxy fronts this stack — see **Sharing the instance** below for the
 virtual host and certbot. Where nothing else owns 80 and 443, add
 `--profile edge-tls` to that command and Caddy handles TLS itself.
 
-### Immediately afterwards
+### The first start will refuse to serve
 
-The bootstrap account is the one thing standing open. `V6` seeds `EMP0001`
-with a password published in the migration, and the repository is public.
+Expect it. Flyway migrates the database, then the startup gate stops the
+application because the seeded `EMP0001` account still has the password
+published in `V6` — and the repository is public. The container restarts in
+a loop until that is dealt with.
 
-1. Sign in as `EMP0001` and set a real password.
-2. Create a named administrator for whoever actually runs the system.
-3. Deactivate `EMP0001`.
+It cannot be dealt with through the application, because the application is
+not running. The full sequence is in
+[`06-deployment.md`](06-deployment.md#the-bootstrap-account); the short form
+is: deactivate the account in the database, restart the backend, then give
+it a real password and create a named administrator.
 
-Do this before anyone else is told the URL.
+Do all of it before anyone else is told the URL.
 
 ## Sharing the instance with another application
 

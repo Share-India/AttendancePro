@@ -78,17 +78,64 @@ kind of problem.
 ## The bootstrap account
 
 `V6` seeds `EMP0001` with a **publicly known** password so the system can be
-opened at all. `must_change_password` stops it being used directly, but it does
-not stop someone signing in with the published password and rotating it
-themselves — which hands over a SUPER_ADMIN account.
+opened at all. `must_change_password` stops it being used directly, but it
+does not stop someone signing in with the published password and rotating it
+themselves — which hands over a SUPER_ADMIN account. The migration is in a
+public repository, so treat the credential as public.
 
-First thing after the first deploy:
+The startup gate refuses to serve under a production profile while that
+account still has that password and is still active.
 
-1. Sign in as `EMP0001`, set a real password.
-2. Create a named administrator for whoever actually runs the system.
-3. Deactivate `EMP0001`.
+### On a first production deployment, that is a chicken and egg
 
-Until step 1, the startup gate refuses to run under a production profile.
+The application cannot be signed in to in order to rotate the password,
+because it will not start until the password is rotated. Flyway runs before
+the gate, so the first `up` migrates the database fully and *then* refuses —
+which is exactly the state you need in order to fix it.
+
+```bash
+# 1. Let the first start migrate the schema. The backend will then refuse to
+#    serve and restart in a loop. That is expected; the database is ready.
+docker compose logs backend | tail -20
+
+# 2. Deactivate the seeded account. A disabled account cannot be signed in to
+#    whatever its password is, which satisfies the gate.
+. ./.env
+docker compose exec -T mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME"   -e "UPDATE users SET is_active = 0 WHERE username = 'EMP0001';"
+
+# 3. Start serving.
+docker compose restart backend
+```
+
+That leaves no administrator who can sign in, which is the point: the next
+step is to create a real one. With the application now running, do it against
+the database once, then use the application for everything after:
+
+```bash
+docker compose exec -T mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME" <<'SQL'
+-- Re-enable the seeded account with a password of your choosing, long enough
+-- to be worth typing once. Generate the hash on the host:
+--   sudo apt-get install -y apache2-utils
+--   htpasswd -bnBC 12 "" 'the-password' | tr -d ':
+'
+UPDATE users
+   SET password_hash = '$2y$12$REPLACE_WITH_THE_GENERATED_HASH',
+       is_active = 1,
+       must_change_password = 1
+ WHERE username = 'EMP0001';
+SQL
+```
+
+Then sign in as `EMP0001`, which forces a password change immediately,
+create a named administrator for whoever actually runs the system, and
+deactivate `EMP0001` again — this time through the application.
+
+### Why not seed an account with no password at all
+
+Because then the first start has a SUPER_ADMIN that anybody can claim, which
+is the same hole with fewer steps. The published hash plus a gate that
+refuses to serve is deliberate: it makes the deployment stop and demand a
+decision rather than quietly coming up wide open.
 
 ## Health and probes
 

@@ -4,7 +4,12 @@ import com.company.attendance.config.CorsProperties;
 import com.company.attendance.config.JwtProperties;
 import com.company.attendance.config.SecurityProperties;
 import com.company.attendance.config.StartupSecurityValidator;
+import com.company.attendance.entity.Employee;
+import com.company.attendance.enums.EmploymentType;
+import com.company.attendance.entity.User;
+import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.UserRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,9 +19,12 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -37,12 +45,17 @@ class SecurityHardeningIT {
     private static final String PLACEHOLDER_SECRET =
             "ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi1jaGFuZ2UtbWUtbm93LTEyMzQ1Njc4OTA=";
 
+    /** The hash V6 seeds, which StartupSecurityValidator refuses to serve on. */
+    private static final String PUBLISHED_BOOTSTRAP_HASH =
+            "$2a$12$RJKZwn5VqVvPkuoCGWpbBu6q/hjaNVePEs/wFWFH1v9.mHPxcBCIy";
+
     /** A real 64-byte key, so the "good" cases are actually good. */
     private static final String STRONG_SECRET =
             "hV8Qk3mZ2pR7tY1wA5sD9fG4jL6nB0xC8vN2mQ7rT3yU5iO1pA6sD4fG8hJ2kL9zX3cV7bN1mQ5rT8yU2iO6pA0sD";
 
     @Autowired MockMvc mockMvc;
     @Autowired UserRepository userRepository;
+    @Autowired EmployeeRepository employeeRepository;
 
     // -----------------------------------------------------------------
     // Response headers
@@ -156,6 +169,87 @@ class SecurityHardeningIT {
                 origins, List.of("GET"), List.of("*"), List.of("X-Request-Id"), true, 3600);
 
         return new StartupSecurityValidator(environment, jwt, security, cors, userRepository);
+    }
+
+    /**
+     * The seeded account, as V6 leaves it.
+     *
+     * <p>Built here rather than looked up: the suite runs on H2 with
+     * create-drop, so Flyway's seed never happens and EMP0001 does not exist
+     * until a test makes it.
+     */
+    private User seedBootstrapAccount(String passwordHash, boolean active) {
+        Employee person = employeeRepository.findByEmployeeCode("EMP0001").orElseGet(() -> {
+            Employee fresh = new Employee();
+            fresh.setEmployeeCode("EMP0001");
+            fresh.setFirstName("System");
+            fresh.setLastName("Administrator");
+            fresh.setOfficialEmail("admin@example.com");
+            fresh.setJoiningDate(LocalDate.of(2020, 1, 1));
+            fresh.setEmploymentType(EmploymentType.PERMANENT);
+            return employeeRepository.saveAndFlush(fresh);
+        });
+
+        User account = new User();
+        account.setUsername("EMP0001");
+        account.setEmail("admin@example.com");
+        account.setPasswordHash(passwordHash);
+        account.setActive(active);
+        account.setEmployee(person);
+        return userRepository.saveAndFlush(account);
+    }
+
+    @AfterEach
+    void removeBootstrapAccount() {
+        // Left behind it would decide the outcome of whichever test ran next:
+        // the gate reads this account on every validation. The employee row
+        // goes too, or the next seed collides on its unique code.
+        userRepository.findByUsernameIgnoreCase("EMP0001")
+                .ifPresent(userRepository::delete);
+        employeeRepository.findByEmployeeCode("EMP0001")
+                .ifPresent(employeeRepository::delete);
+    }
+
+    /**
+     * The bootstrap checks need the real entry point, because the account
+     * lookup deliberately sits outside the pure-configuration check.
+     */
+    private void runFullValidation() {
+        validatorWith(STRONG_SECRET, true, List.of("https://attendance.example.com"), 12)
+                .onApplicationEvent(new org.springframework.boot.context.event.ApplicationReadyEvent(
+                        new org.springframework.boot.SpringApplication(), new String[0],
+                        new org.springframework.context.support.GenericApplicationContext(),
+                        java.time.Duration.ZERO));
+    }
+
+    @Test
+    @DisplayName("the seeded administrator with its published password stops production startup")
+    void untouchedBootstrapAccountIsRefused() {
+        seedBootstrapAccount(PUBLISHED_BOOTSTRAP_HASH, true);
+
+        assertThatThrownBy(this::runFullValidation)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("EMP0001");
+    }
+
+    @Test
+    @DisplayName("deactivating that account satisfies the gate, which is what its message advises")
+    void deactivatedBootstrapAccountIsAccepted() {
+        // The message has always said "rotate the password or deactivate the
+        // account". Until the check honoured the second half, following that
+        // advice changed nothing and a first deployment could not start at
+        // all: the only way to rotate is to sign in, and it would not serve.
+        seedBootstrapAccount(PUBLISHED_BOOTSTRAP_HASH, false);
+
+        assertThatCode(this::runFullValidation).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("a rotated password satisfies it too, with the account still active")
+    void rotatedBootstrapPasswordIsAccepted() {
+        seedBootstrapAccount("$2a$12$somethingElseEntirelyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", true);
+
+        assertThatCode(this::runFullValidation).doesNotThrowAnyException();
     }
 
     @Test
