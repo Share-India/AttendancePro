@@ -110,3 +110,51 @@ export const HOLIDAY_TYPE_LABEL: Record<HolidayType, string> = {
   STATE: 'State',
   COMPANY: 'Company',
 };
+
+/**
+ * A recurring non-working day.
+ *
+ * <p>Alternate Saturdays are two rules, not one — Saturday/week 1 and
+ * Saturday/week 3. A fifth Saturday matches neither and is worked by all.
+ *
+ * <p>No half-day field: a shortened Saturday is a shift, not a weekly off.
+ * Any weekly off short-circuits the day to WEEKLY_OFF before hours are
+ * considered, so a "half day" rule would excuse the day, not shorten it.
+ */
+export interface WeeklyOff {
+  id: number;
+  scopeType: WeeklyOffScope;
+  scopeId: number | null;
+  /** Resolved name of whatever the scope points at, or "everyone". */
+  scopeName: string;
+  dayOfWeek: number;
+  dayName: string;
+  /** Null means every week. */
+  weekOfMonth: number | null;
+  /** "Every Saturday", "2nd Saturday" — built server-side so callers agree. */
+  summary: string;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  active: boolean;
+}
+
+export const WEEKLY_OFF_SCOPES = ['GLOBAL', 'OFFICE', 'DEPARTMENT', 'EMPLOYEE'] as const;
+
+export type WeeklyOffScope = (typeof WEEKLY_OFF_SCOPES)[number];
+
+export const WEEKLY_OFF_SCOPE_LABEL: Record<WeeklyOffScope, string> = {
+  GLOBAL: 'Everyone',
+  OFFICE: 'One office',
+  DEPARTMENT: 'One department',
+  EMPLOYEE: 'One person',
+};
+
+export const WEEKDAYS = [
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+  { value: 7, label: 'Sunday' },
+] as const;

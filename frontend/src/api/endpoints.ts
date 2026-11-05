@@ -136,6 +136,8 @@ export const endpoints = {
     shiftById: (id: number) => `/admin/shifts/${id}`,
     holidays: '/admin/holidays',
     holidayById: (id: number) => `/admin/holidays/${id}`,
+    weeklyOffs: '/admin/weekly-offs',
+    weeklyOffById: (id: number) => `/admin/weekly-offs/${id}`,
     auditLogs: '/admin/audit-logs',
     auditEntityTypes: '/admin/audit-logs/entity-types',
   },

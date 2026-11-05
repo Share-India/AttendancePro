@@ -43,6 +43,7 @@ export const ROUTES = {
   adminOffices: '/admin/offices',
   adminShifts: '/admin/shifts',
   adminHolidays: '/admin/holidays',
+  adminWeeklyOffs: '/admin/weekly-offs',
 
   reports: '/reports',
   profile: '/profile',

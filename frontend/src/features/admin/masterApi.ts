@@ -1,7 +1,9 @@
 import { apiClient, unwrap } from '../../api/axiosClient';
 import { endpoints } from '../../api/endpoints';
 import type { ApiResponse } from '../../types/api';
-import type { Department, Designation, Holiday, Office, OfficeLocation, Shift } from '../../types/master';
+import type {
+  Department, Designation, Holiday, Office, OfficeLocation, Shift, WeeklyOff,
+} from '../../types/master';
 
 const list = async <T>(url: string, activeOnly = true): Promise<T[]> => {
   const response = await apiClient.get<ApiResponse<T[]>>(url, { params: { activeOnly } });
@@ -9,6 +11,17 @@ const list = async <T>(url: string, activeOnly = true): Promise<T[]> => {
 };
 
 export const masterApi = {
+  weeklyOffs: {
+    list: (activeOnly = true) => list<WeeklyOff>(endpoints.admin.weeklyOffs, activeOnly),
+    create: async (payload: Record<string, unknown>) =>
+      unwrap(await apiClient.post<ApiResponse<WeeklyOff>>(endpoints.admin.weeklyOffs, payload)),
+    update: async (id: number, payload: Record<string, unknown>) =>
+      unwrap(await apiClient.put<ApiResponse<WeeklyOff>>(endpoints.admin.weeklyOffById(id), payload)),
+    remove: async (id: number) => {
+      await apiClient.delete(endpoints.admin.weeklyOffById(id));
+    },
+  },
+
   holidays: {
     list: async (year: number | null, activeOnly = true): Promise<Holiday[]> => {
       const response = await apiClient.get<ApiResponse<Holiday[]>>(endpoints.admin.holidays, {

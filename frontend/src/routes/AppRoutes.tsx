@@ -60,6 +60,9 @@ const ShiftsPage = lazy(() => import('../pages/admin/ShiftsPage').then((m) => ({
 const HolidayManagementPage = lazy(() =>
   import('../pages/admin/HolidayManagementPage').then((m) => ({ default: m.HolidayManagementPage })),
 );
+const WeeklyOffsPage = lazy(() =>
+  import('../pages/admin/WeeklyOffsPage').then((m) => ({ default: m.WeeklyOffsPage })),
+);
 const TeamDashboardPage = lazy(() => import('../pages/manager/TeamDashboardPage').then((m) => ({ default: m.TeamDashboardPage })));
 const WorkFromHomePage = lazy(() => import('../pages/employee/WorkFromHomePage').then((m) => ({ default: m.WorkFromHomePage })));
 
@@ -266,6 +269,7 @@ export const AppRoutes = () => (
             HOLIDAY_MANAGE. Guarding the route would hide the office holidays
             from the people who work them. */}
         <Route path={ROUTES.adminHolidays} element={<HolidayManagementPage />} />
+        <Route path={ROUTES.adminWeeklyOffs} element={<WeeklyOffsPage />} />
 
         <Route element={<PermissionGuard anyOf={[PERMISSIONS.AUDIT_VIEW]} />}>
           <Route path={ROUTES.auditLogs} element={<AuditLogPage />} />

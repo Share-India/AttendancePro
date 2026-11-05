@@ -135,7 +135,7 @@ export const MENU: MenuItem[] = [
     to: ROUTES.adminDepartments,
     icon: 'account_tree',
     requiredPermissions: ['DEPARTMENT_MANAGE', 'OFFICE_MANAGE', 'SHIFT_MANAGE',
-      'HOLIDAY_MANAGE', PERMISSIONS.AUDIT_VIEW],
+      'HOLIDAY_MANAGE', 'WEEKLY_OFF_MANAGE', PERMISSIONS.AUDIT_VIEW],
     children: [
       { label: 'Departments', to: ROUTES.adminDepartments, icon: 'apartment',
         requiredPermissions: ['DEPARTMENT_MANAGE'] },
@@ -147,6 +147,8 @@ export const MENU: MenuItem[] = [
         requiredPermissions: ['SHIFT_MANAGE'] },
       { label: 'Holidays', to: ROUTES.adminHolidays, icon: 'event_busy',
         requiredPermissions: ['HOLIDAY_MANAGE'] },
+      { label: 'Weekly Offs', to: ROUTES.adminWeeklyOffs, icon: 'event_repeat',
+        requiredPermissions: ['WEEKLY_OFF_MANAGE'] },
       { label: 'Audit Trail', to: ROUTES.auditLogs, icon: 'policy',
         requiredPermissions: [PERMISSIONS.AUDIT_VIEW] },
     ],
