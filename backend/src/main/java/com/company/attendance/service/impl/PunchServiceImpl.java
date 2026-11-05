@@ -26,6 +26,7 @@ import com.company.attendance.repository.AttendancePunchEventRepository;
 import com.company.attendance.repository.AttendanceRepository;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.EmployeeShiftRepository;
+import com.company.attendance.service.ShiftResolutionService;
 import com.company.attendance.repository.LeaveRequestRepository;
 import com.company.attendance.repository.OvertimeRecordRepository;
 import com.company.attendance.security.UserPrincipal;
@@ -76,6 +77,7 @@ public class PunchServiceImpl implements PunchService {
     private final LeaveRequestRepository leaveRequestRepository;
     private final EmployeeRepository employeeRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
+    private final ShiftResolutionService shiftResolutionService;
     private final PolicyResolutionService policyResolutionService;
     private final CalendarService calendarService;
     private final GeofenceService geofenceService;
@@ -92,6 +94,7 @@ public class PunchServiceImpl implements PunchService {
                             LeaveRequestRepository leaveRequestRepository,
                             EmployeeRepository employeeRepository,
                             EmployeeShiftRepository employeeShiftRepository,
+                                 ShiftResolutionService shiftResolutionService,
                             PolicyResolutionService policyResolutionService,
                             CalendarService calendarService,
                             GeofenceService geofenceService,
@@ -107,6 +110,7 @@ public class PunchServiceImpl implements PunchService {
         this.leaveRequestRepository = leaveRequestRepository;
         this.employeeRepository = employeeRepository;
         this.employeeShiftRepository = employeeShiftRepository;
+        this.shiftResolutionService = shiftResolutionService;
         this.policyResolutionService = policyResolutionService;
         this.calendarService = calendarService;
         this.geofenceService = geofenceService;
@@ -329,11 +333,9 @@ public class PunchServiceImpl implements PunchService {
     }
 
     private Shift resolveShift(Employee employee, LocalDate onDate) {
-        return employeeShiftRepository.findCurrentFor(employee.getId(), onDate)
-                .map(assignment -> assignment.getShift())
-                .orElseThrow(() -> new BusinessException(ErrorCode.NO_SHIFT_ASSIGNED,
-                        "No shift is assigned to you for today, so attendance cannot be recorded. "
-                                + "Ask HR to assign one."));
+        // Through the resolver, so a weekday override — the short Saturday —
+        // governs the punch window and the late calculation.
+        return shiftResolutionService.require(employee, onDate);
     }
 
     private void assertDayAllowsPunch(DayType dayType, AttendancePolicy policy) {

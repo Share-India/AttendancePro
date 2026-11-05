@@ -18,6 +18,7 @@ import com.company.attendance.repository.AttendanceRegularizationRepository;
 import com.company.attendance.repository.AttendanceRepository;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.EmployeeShiftRepository;
+import com.company.attendance.service.ShiftResolutionService;
 import com.company.attendance.repository.LeaveRequestDayRepository;
 import com.company.attendance.repository.LeaveRequestRepository;
 import com.company.attendance.repository.WfhRequestDayRepository;
@@ -40,6 +41,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -76,6 +78,7 @@ public class DashboardServiceImpl implements DashboardService {
 
     private final EmployeeRepository employeeRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
+    private final ShiftResolutionService shiftResolutionService;
     private final AttendanceRepository attendanceRepository;
     private final LeaveRequestDayRepository leaveRequestDayRepository;
     private final LeaveRequestRepository leaveRequestRepository;
@@ -88,6 +91,7 @@ public class DashboardServiceImpl implements DashboardService {
 
     public DashboardServiceImpl(EmployeeRepository employeeRepository,
                                 EmployeeShiftRepository employeeShiftRepository,
+                                 ShiftResolutionService shiftResolutionService,
                                 AttendanceRepository attendanceRepository,
                                 LeaveRequestDayRepository leaveRequestDayRepository,
                                 LeaveRequestRepository leaveRequestRepository,
@@ -99,6 +103,7 @@ public class DashboardServiceImpl implements DashboardService {
                                 RequestApproverResolver approverResolver) {
         this.employeeRepository = employeeRepository;
         this.employeeShiftRepository = employeeShiftRepository;
+        this.shiftResolutionService = shiftResolutionService;
         this.attendanceRepository = attendanceRepository;
         this.leaveRequestDayRepository = leaveRequestDayRepository;
         this.leaveRequestRepository = leaveRequestRepository;
@@ -358,7 +363,7 @@ public class DashboardServiceImpl implements DashboardService {
         Set<Long> wfhApproved = new HashSet<>(
                 wfhRequestDayRepository.findApprovedEmployeeIdsOn(ids, date));
 
-        Map<Long, Shift> shifts = shiftsFor(ids, date);
+        Map<Long, Shift> shifts = shiftsFor(population, date);
 
         Instant now = Instant.now();
         List<MemberDay> result = new ArrayList<>(population.size());
@@ -438,15 +443,17 @@ public class DashboardServiceImpl implements DashboardService {
         return now.isAfter(DateTimeUtils.shiftEndInstant(date, zone, shift));
     }
 
-    private Map<Long, Shift> shiftsFor(Set<Long> employeeIds, LocalDate date) {
-        // findEffectiveOn is per employee; the roster is paginated and a team is
-        // small, but an org-wide call would be N queries. Kept explicit here so
-        // the cost is visible rather than hidden behind a lazy association.
+    private Map<Long, Shift> shiftsFor(Collection<Employee> population, LocalDate date) {
+        // Per employee; the roster is paginated and a team is small, but an
+        // org-wide call would be N queries. Kept explicit here so the cost is
+        // visible rather than hidden behind a lazy association.
+        //
+        // Entities rather than ids because a weekday shift override can be
+        // scoped to a department or an office, which an id alone cannot answer.
         Map<Long, Shift> shifts = new HashMap<>();
-        for (Long employeeId : employeeIds) {
-            employeeShiftRepository.findCurrentFor(employeeId, date)
-                    .map(EmployeeShift::getShift)
-                    .ifPresent(shift -> shifts.put(employeeId, shift));
+        for (Employee employee : population) {
+            shiftResolutionService.resolve(employee, date)
+                    .ifPresent(shift -> shifts.put(employee.getId(), shift));
         }
         return shifts;
     }

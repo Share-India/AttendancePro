@@ -30,6 +30,7 @@ import com.company.attendance.repository.AttendanceRegularizationRepository;
 import com.company.attendance.repository.AttendanceRepository;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.EmployeeShiftRepository;
+import com.company.attendance.service.ShiftResolutionService;
 import com.company.attendance.repository.RegularizationApprovalRepository;
 import com.company.attendance.security.AccessScopeResolver;
 import com.company.attendance.security.UserPrincipal;
@@ -81,6 +82,7 @@ public class RegularizationServiceImpl implements RegularizationService {
     private final AttendanceBreakRepository breakRepository;
     private final EmployeeRepository employeeRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
+    private final ShiftResolutionService shiftResolutionService;
     private final PolicyResolutionService policyResolutionService;
     private final CalendarService calendarService;
     private final AttendanceCalculationService calculationService;
@@ -96,6 +98,7 @@ public class RegularizationServiceImpl implements RegularizationService {
                                      AttendanceBreakRepository breakRepository,
                                      EmployeeRepository employeeRepository,
                                      EmployeeShiftRepository employeeShiftRepository,
+                                 ShiftResolutionService shiftResolutionService,
                                      PolicyResolutionService policyResolutionService,
                                      CalendarService calendarService,
                                      AttendanceCalculationService calculationService,
@@ -110,6 +113,7 @@ public class RegularizationServiceImpl implements RegularizationService {
         this.breakRepository = breakRepository;
         this.employeeRepository = employeeRepository;
         this.employeeShiftRepository = employeeShiftRepository;
+        this.shiftResolutionService = shiftResolutionService;
         this.policyResolutionService = policyResolutionService;
         this.calendarService = calendarService;
         this.calculationService = calculationService;
@@ -213,8 +217,7 @@ public class RegularizationServiceImpl implements RegularizationService {
         LocalDate date = regularization.getAttendanceDate();
         ZoneId zone = DateTimeUtils.zoneOf(employee);
 
-        Shift shift = employeeShiftRepository.findCurrentFor(employee.getId(), date)
-                .map(assignment -> assignment.getShift())
+        Shift shift = shiftResolutionService.resolve(employee, date)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NO_SHIFT_ASSIGNED,
                         "No shift was assigned on " + date + ", so the day cannot be recomputed."));
 

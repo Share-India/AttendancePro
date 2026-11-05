@@ -19,6 +19,7 @@ import com.company.attendance.repository.AttendanceBreakRepository;
 import com.company.attendance.repository.AttendanceRepository;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.EmployeeShiftRepository;
+import com.company.attendance.service.ShiftResolutionService;
 import com.company.attendance.security.AccessScopeResolver;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.AttendanceService;
@@ -50,6 +51,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final AttendanceBreakRepository breakRepository;
     private final EmployeeRepository employeeRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
+    private final ShiftResolutionService shiftResolutionService;
     private final CalendarService calendarService;
     private final AccessScopeResolver accessScopeResolver;
     private final ObjectMapper objectMapper;
@@ -58,6 +60,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                                  AttendanceBreakRepository breakRepository,
                                  EmployeeRepository employeeRepository,
                                  EmployeeShiftRepository employeeShiftRepository,
+                                 ShiftResolutionService shiftResolutionService,
                                  CalendarService calendarService,
                                  AccessScopeResolver accessScopeResolver,
                                  ObjectMapper objectMapper) {
@@ -65,6 +68,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         this.breakRepository = breakRepository;
         this.employeeRepository = employeeRepository;
         this.employeeShiftRepository = employeeShiftRepository;
+        this.shiftResolutionService = shiftResolutionService;
         this.calendarService = calendarService;
         this.accessScopeResolver = accessScopeResolver;
         this.objectMapper = objectMapper;
@@ -88,9 +92,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         Employee employee = requireSelf(principal);
         ZoneId zone = DateTimeUtils.zoneOf(employee);
 
-        Optional<Shift> shift = employeeShiftRepository
-                .findCurrentFor(employee.getId(), DateTimeUtils.localDate(now, zone))
-                .map(assignment -> assignment.getShift());
+        Optional<Shift> shift =
+                shiftResolutionService.resolve(employee, DateTimeUtils.localDate(now, zone));
 
         LocalDate businessDate = DateTimeUtils.resolveBusinessDate(now, zone, shift.orElse(null));
         DayType dayType = calendarService.resolveDayType(employee, businessDate);
@@ -169,9 +172,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         Employee employee = requireSelf(principal);
         ZoneId zone = DateTimeUtils.zoneOf(employee);
 
-        Shift shift = employeeShiftRepository
-                .findCurrentFor(employee.getId(), DateTimeUtils.localDate(now, zone))
-                .map(assignment -> assignment.getShift())
+        Shift shift = shiftResolutionService
+                .resolve(employee, DateTimeUtils.localDate(now, zone))
                 .orElse(null);
 
         LocalDate businessDate = DateTimeUtils.resolveBusinessDate(now, zone, shift);

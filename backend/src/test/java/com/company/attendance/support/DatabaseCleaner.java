@@ -85,6 +85,8 @@ public class DatabaseCleaner {
             "users",
 
             // Org
+            // Before shifts: it holds a foreign key to one.
+            "shift_day_overrides",
             "employee_shifts",
             "employee_managers",
             "employees",

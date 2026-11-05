@@ -19,6 +19,7 @@ import com.company.attendance.repository.AttendancePunchEventRepository;
 import com.company.attendance.repository.AttendanceRepository;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.EmployeeShiftRepository;
+import com.company.attendance.service.ShiftResolutionService;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.util.DateTimeUtils;
 import org.slf4j.Logger;
@@ -73,6 +74,7 @@ public class AttendanceOverrideService {
     private final AttendanceBreakRepository breakRepository;
     private final EmployeeRepository employeeRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
+    private final ShiftResolutionService shiftResolutionService;
     private final PolicyResolutionService policyResolutionService;
     private final CalendarService calendarService;
     private final AttendanceCalculationService calculationService;
@@ -83,6 +85,7 @@ public class AttendanceOverrideService {
                                      AttendanceBreakRepository breakRepository,
                                      EmployeeRepository employeeRepository,
                                      EmployeeShiftRepository employeeShiftRepository,
+                                 ShiftResolutionService shiftResolutionService,
                                      PolicyResolutionService policyResolutionService,
                                      CalendarService calendarService,
                                      AttendanceCalculationService calculationService,
@@ -92,6 +95,7 @@ public class AttendanceOverrideService {
         this.breakRepository = breakRepository;
         this.employeeRepository = employeeRepository;
         this.employeeShiftRepository = employeeShiftRepository;
+        this.shiftResolutionService = shiftResolutionService;
         this.policyResolutionService = policyResolutionService;
         this.calendarService = calendarService;
         this.calculationService = calculationService;
@@ -113,8 +117,7 @@ public class AttendanceOverrideService {
 
         ZoneId zone = DateTimeUtils.zoneOf(employee);
 
-        Shift shift = employeeShiftRepository.findCurrentFor(employee.getId(), date)
-                .map(assignment -> assignment.getShift())
+        Shift shift = shiftResolutionService.resolve(employee, date)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NO_SHIFT_ASSIGNED,
                         "No shift was assigned on " + date + ", so the day cannot be computed. "
                                 + "Assign one first."));

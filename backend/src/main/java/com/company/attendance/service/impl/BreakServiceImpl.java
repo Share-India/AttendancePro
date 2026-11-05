@@ -21,6 +21,7 @@ import com.company.attendance.repository.AttendanceRepository;
 import com.company.attendance.repository.BreakTypeRepository;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.EmployeeShiftRepository;
+import com.company.attendance.service.ShiftResolutionService;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.BreakService;
 import com.company.attendance.service.PolicyResolutionService;
@@ -65,6 +66,7 @@ public class BreakServiceImpl implements BreakService {
     private final AttendancePunchEventRepository punchEventRepository;
     private final EmployeeRepository employeeRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
+    private final ShiftResolutionService shiftResolutionService;
     private final PolicyResolutionService policyResolutionService;
     private final AuditLogService auditLogService;
 
@@ -74,6 +76,7 @@ public class BreakServiceImpl implements BreakService {
                             AttendancePunchEventRepository punchEventRepository,
                             EmployeeRepository employeeRepository,
                             EmployeeShiftRepository employeeShiftRepository,
+                                 ShiftResolutionService shiftResolutionService,
                             PolicyResolutionService policyResolutionService,
                             AuditLogService auditLogService) {
         this.attendanceRepository = attendanceRepository;
@@ -82,6 +85,7 @@ public class BreakServiceImpl implements BreakService {
         this.punchEventRepository = punchEventRepository;
         this.employeeRepository = employeeRepository;
         this.employeeShiftRepository = employeeShiftRepository;
+        this.shiftResolutionService = shiftResolutionService;
         this.policyResolutionService = policyResolutionService;
         this.auditLogService = auditLogService;
     }
@@ -188,8 +192,8 @@ public class BreakServiceImpl implements BreakService {
      */
     private Attendance requireOpenDay(Employee employee, Instant now) {
         ZoneId zone = DateTimeUtils.zoneOf(employee);
-        Shift shift = employeeShiftRepository.findCurrentFor(employee.getId(), DateTimeUtils.localDate(now, zone))
-                .map(assignment -> assignment.getShift())
+        Shift shift = shiftResolutionService
+                .resolve(employee, DateTimeUtils.localDate(now, zone))
                 .orElse(null);
         LocalDate businessDate = DateTimeUtils.resolveBusinessDate(now, zone, shift);
 
