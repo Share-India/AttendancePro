@@ -87,9 +87,109 @@ const read = (options: PositionOptions): Promise<Position> =>
     );
   });
 
+/** How long to keep sampling before settling for the best fix so far. */
+const SAMPLE_WINDOW_MS = 8_000;
+
 /**
- * Reads the current position, retrying once on timeout with a looser cache
- * window — a first attempt often times out indoors while a second succeeds.
+ * Accurate enough to stop early. Below this, waiting longer buys nothing a
+ * geofence can use, and the person is standing there watching a spinner.
+ */
+const GOOD_ENOUGH_METRES = 25;
+
+/**
+ * Samples for a few seconds and keeps the most accurate fix.
+ *
+ * <p>The first answer a browser gives is usually its worst. It replies
+ * immediately from whatever it already knows — a coarse Wi-Fi or cell
+ * estimate — then refines as more access points are scanned or more
+ * satellites are acquired. A laptop with no GPS typically walks down from
+ * a couple of hundred metres to a few tens over about five seconds.
+ *
+ * <p>Taking one reading therefore throws away the good fix that was moments
+ * away, and on a laptop that is the difference between a punch the geofence
+ * can verify and one it has to refuse. Nothing here loosens any rule: it
+ * sends a better measurement, not a more forgiving one.
+ *
+ * <p>Resolves as soon as a reading beats {@link GOOD_ENOUGH_METRES}, so a
+ * phone with real GPS still answers almost at once.
+ */
+const sampleBestPosition = (): Promise<Position> =>
+  new Promise((resolve, reject) => {
+    let best: Position | null = null;
+    let settled = false;
+    let watchId: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const stop = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      stop();
+      if (best) {
+        resolve(best);
+      } else {
+        // The window closed with no reading at all. Treated as a timeout so
+        // the caller's existing retry — which accepts a cached fix — applies.
+        reject(
+          new GeolocationFailure(
+            'TIMEOUT',
+            'Finding your location took too long.',
+            'This usually means a weak signal. Try again in a moment.',
+          ),
+        );
+      }
+    };
+
+    watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const candidate: Position = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracyMeters: position.coords.accuracy,
+          capturedAt: new Date(position.timestamp).toISOString(),
+        };
+
+        if (!best || candidate.accuracyMeters < best.accuracyMeters) {
+          best = candidate;
+        }
+
+        if (best.accuracyMeters <= GOOD_ENOUGH_METRES) {
+          settle();
+        }
+      },
+      (error) => {
+        // A later error does not discard an earlier good reading: watchPosition
+        // can fail once the fix has already been obtained, and refusing the
+        // punch at that point would be throwing away the answer.
+        if (best) {
+          settle();
+          return;
+        }
+        if (settled) return;
+        settled = true;
+        stop();
+        reject(describe(error));
+      },
+      HIGH_ACCURACY_OPTIONS,
+    );
+
+    timer = setTimeout(settle, SAMPLE_WINDOW_MS);
+  });
+
+/**
+ * The position to record against a punch: the best of a few seconds of
+ * readings, falling back to a single cached-tolerant read if sampling
+ * produced nothing at all.
  */
 export const getCurrentPosition = async (): Promise<Position> => {
   if (!('geolocation' in navigator)) {
@@ -101,7 +201,7 @@ export const getCurrentPosition = async (): Promise<Position> => {
   }
 
   try {
-    return await read(HIGH_ACCURACY_OPTIONS);
+    return await sampleBestPosition();
   } catch (error) {
     if (error instanceof GeolocationFailure && error.kind === 'TIMEOUT') {
       return read(RETRY_OPTIONS);
