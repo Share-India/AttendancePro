@@ -20,6 +20,7 @@ export const endpoints = {
     roles: (id: number) => `/employees/${id}/roles`,
     shift: (id: number) => `/employees/${id}/shift`,
     shifts: (id: number) => `/employees/${id}/shifts`,
+    resetPassword: (id: number) => `/employees/${id}/reset-password`,
     bulkImport: '/employees/bulk-import',
     bulkImportTemplate: '/employees/bulk-import/template',
   },

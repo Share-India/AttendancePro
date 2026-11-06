@@ -15,6 +15,7 @@ import com.company.attendance.dto.response.master.ShiftAssignmentResponse;
 import com.company.attendance.security.CurrentUser;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.EmployeeService;
+import com.company.attendance.service.EmployeeService.PasswordResetResult;
 import com.company.attendance.service.ShiftService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -122,6 +123,22 @@ public class EmployeeController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(payload, "Employee created"));
+    }
+
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasAuthority('USER_PASSWORD_RESET')")
+    @Operation(summary = "Issue a new first-time password for one account")
+    public ResponseEntity<ApiResponse<PasswordResetResult>> resetPassword(@PathVariable Long id) {
+        // Returned exactly once. The row holds only a hash, so this response is
+        // the only place the password is readable — including to whoever asked.
+        var result = employeeService.resetPassword(id);
+
+        String message = result.reset()
+                ? "A new password was issued. They must change it at next sign-in, and any open "
+                        + "session was ended."
+                : "This employee has no login, so no password was issued.";
+
+        return ResponseEntity.ok(ApiResponse.success(result, message));
     }
 
     @PutMapping("/{id}")

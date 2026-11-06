@@ -7,6 +7,7 @@ import type {
   EmployeeDetail,
   EmployeeSearchParams,
   EmployeeSummary,
+  PasswordResetResult,
   ShiftAssignment,
 } from '../../types/employee';
 
@@ -56,6 +57,13 @@ export const employeeApi = {
 
   reactivate: async (id: number): Promise<void> => {
     await apiClient.patch(endpoints.employees.reactivate(id));
+  },
+
+  resetPassword: async (id: number): Promise<PasswordResetResult> => {
+    const response = await apiClient.post<ApiResponse<PasswordResetResult>>(
+      endpoints.employees.resetPassword(id),
+    );
+    return unwrap(response);
   },
 
   assignManager: async (id: number, payload: Record<string, unknown>): Promise<EmployeeDetail> => {

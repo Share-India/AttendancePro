@@ -53,6 +53,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -220,6 +221,10 @@ public class EmployeeServiceImpl implements EmployeeService {
      * Creates the login. The password is generated, not supplied: no
      * administrator should ever choose or see another person's working
      * password, and {@code mustChangePassword} forces a rotation on first use.
+     *
+     * <p>Distinct per account on purpose. One shared starting password would
+     * mean that until somebody signs in and rotates, an employee code — which
+     * is printed on everything — is enough to sign in as them.
      */
     private String provisionUser(Employee employee, Set<String> requestedRoles) {
         String temporaryPassword = generateTemporaryPassword();
@@ -274,6 +279,65 @@ public class EmployeeServiceImpl implements EmployeeService {
         StringBuilder shuffled = new StringBuilder();
         characters.forEach(shuffled::append);
         return shuffled.toString();
+    }
+
+    // -----------------------------------------------------------------
+    // Password resets
+    // -----------------------------------------------------------------
+
+    @Override
+    @Transactional
+    public PasswordResetResult resetPassword(Long employeeId) {
+        Employee employee = requireEmployee(employeeId);
+        User user = userRepository.findByEmployeeId(employee.getId()).orElse(null);
+
+        if (user == null) {
+            // Not an error worth failing on, but it must not look like success:
+            // the administrator would otherwise pass on a password for an
+            // account that does not exist.
+            return PasswordResetResult.noLogin();
+        }
+
+        return PasswordResetResult.issued(new IssuedCredential(
+                employee.getEmployeeCode(), employee.getFullName(), issueNewPassword(user)));
+    }
+
+    /**
+     * Issues a fresh random password for one account and returns it.
+     *
+     * <p>The one place a reset is written, so a single and a bulk reset cannot
+     * drift apart in what they clear. The returned value is the only point at
+     * which the password is readable — the row holds a hash and nothing else,
+     * which is why an administrator asking to see somebody's first password
+     * gets a new one rather than the old one.
+     *
+     * <p>The lockout counters are cleared deliberately: an account locked out
+     * by failed attempts is exactly the account somebody is asking to have
+     * reset, and leaving {@code locked} set would hand over a correct password
+     * that still refuses to sign in.
+     */
+    private String issueNewPassword(User user) {
+        String password = generateTemporaryPassword();
+
+        user.setPasswordHash(passwordEncoder.encode(password));
+        user.setPasswordChangedAt(Instant.now());
+        user.setMustChangePassword(true);
+        user.setFailedLoginAttempts((short) 0);
+        user.setLocked(false);
+        user.setLockedUntil(null);
+        userRepository.save(user);
+
+        // Anyone already signed in on another device would otherwise carry on
+        // with full access and never meet the forced change.
+        tokenRevocationService.revokeAllForUser(user.getId(), "ADMIN_PASSWORD_RESET");
+
+        // The password itself is never logged, here or anywhere else.
+        auditLogService.recordAuthEvent(AuditAction.PASSWORD_RESET_COMPLETE, user.getId(),
+                user.getUsername(),
+                "A new first-time password was issued by an administrator; "
+                        + "a change is required on next sign-in and all sessions were revoked");
+
+        return password;
     }
 
     // -----------------------------------------------------------------

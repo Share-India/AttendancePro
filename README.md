@@ -57,7 +57,7 @@ The backend reads `.env` itself, so no credentials go on the command line or int
 cd backend && ./mvnw spring-boot:run
 ```
 
-Flyway applies `V1`–`V20` on a fresh database: schema, the role and permission catalogue, reference
+Flyway applies `V1`–`V23` on a fresh database: schema, the role and permission catalogue, reference
 data and a bootstrap administrator.
 
 ### 4. Start the frontend

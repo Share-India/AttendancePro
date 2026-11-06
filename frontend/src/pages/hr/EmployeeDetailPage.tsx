@@ -36,6 +36,7 @@ export const EmployeeDetailPage = () => {
   });
 
   const [managerOpen, setManagerOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
   const [managerId, setManagerId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().slice(0, 10));
 
@@ -78,6 +79,14 @@ export const EmployeeDetailPage = () => {
     },
   });
 
+  // Deliberately no onSuccess that closes the dialog. Unlike every other
+  // mutation on this page, success is not the end of the interaction: the
+  // response carries the one and only readable copy of the password, and the
+  // dialog has to stay open to show it. Closing here loses it for good.
+  const resetPassword = useMutation({
+    mutationFn: () => employeeApi.resetPassword(employeeId),
+  });
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-xl">
@@ -112,6 +121,7 @@ export const EmployeeDetailPage = () => {
   // The same authority the API enforces on PUT /employees/{id}/manager.
   // Gating on a view permission would offer a button that then fails.
   const canManage = hasPermission(PERMISSIONS.EMPLOYEE_UPDATE);
+  const canResetPassword = hasPermission(PERMISSIONS.USER_PASSWORD_RESET);
 
   return (
     <div className="mx-auto max-w-[1280px]">
@@ -137,6 +147,19 @@ export const EmployeeDetailPage = () => {
                 <Icon name="edit" className="text-[18px]" />
                 Edit
               </button>
+              {canResetPassword && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    resetPassword.reset();
+                    setResetOpen(true);
+                  }}
+                >
+                  <Icon name="lock_reset" className="text-[18px]" />
+                  Reset password
+                </button>
+              )}
               {employee.active ? (
                 <button
                   type="button"
@@ -308,6 +331,78 @@ export const EmployeeDetailPage = () => {
           )}
         </div>
       </div>
+
+      <Modal
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        title={`Reset the password for ${employee.fullName}?`}
+        description={
+          resetPassword.data
+            ? undefined
+            : 'A new one-time password will be generated and shown here once. They will have to change it the next time they sign in, and anyone signed in as them on another device will be signed out.'
+        }
+        footer={
+          resetPassword.data ? (
+            <button type="button" className="btn-primary" onClick={() => setResetOpen(false)}>
+              Done
+            </button>
+          ) : (
+            <>
+              <button type="button" className="btn-secondary" onClick={() => setResetOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={resetPassword.isPending}
+                onClick={() => resetPassword.mutate()}
+              >
+                {resetPassword.isPending ? (
+                  <Spinner className="h-4 w-4" />
+                ) : (
+                  <Icon name="lock_reset" className="text-[18px]" />
+                )}
+                Reset password
+              </button>
+            </>
+          )
+        }
+      >
+        <div className="flex flex-col gap-md">
+          {resetPassword.isError && (
+            <Alert variant="error" title="Could not reset the password">
+              {resetPassword.error instanceof ApiError
+                ? resetPassword.error.message
+                : 'Please try again.'}
+            </Alert>
+          )}
+
+          {resetPassword.data?.reset === false && (
+            <Alert variant="warning" title="Nothing was reset">
+              {employee.fullName} has no login, so there was no password to reset. Nobody can
+              sign in as them until an account is created.
+            </Alert>
+          )}
+
+          {resetPassword.data?.credential && (
+            <>
+              <Alert variant="warning" title="This is the only time it is shown">
+                Copy it before you close this. The password is stored hashed — once this closes,
+                nobody can read it back, and the only way to help {employee.firstName} is another
+                reset.
+              </Alert>
+              <div className="rounded-md border border-outline-variant bg-surface-container p-md">
+                <p className="mb-xs text-label-md uppercase tracking-wide text-on-surface-variant">
+                  Sign in as {employee.employeeCode} with
+                </p>
+                <p className="font-mono text-title-md text-on-surface">
+                  {resetPassword.data.credential.password}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         open={managerOpen}

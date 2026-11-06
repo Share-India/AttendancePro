@@ -94,5 +94,20 @@ export interface BulkImportResult {
   errors: Array<{ rowNumber: number; employeeCode: string | null; message: string }>;
 }
 
+/** A first-time password and who it belongs to. Readable once, in the response. */
+export interface IssuedCredential {
+  employeeCode: string;
+  employeeName: string;
+  password: string;
+}
+
+/** What an administrator's password reset did. */
+export interface PasswordResetResult {
+  /** False when the employee has no login, so no password was issued. */
+  reset: boolean;
+  /** Absent, not null, when nothing was issued — the API omits null fields. */
+  credential?: IssuedCredential;
+}
+
 export const EMPLOYMENT_TYPES = ['PERMANENT', 'CONTRACT', 'INTERN', 'CONSULTANT'] as const;
 export const EMPLOYMENT_STATUSES = ['ACTIVE', 'ON_NOTICE', 'EXITED', 'SUSPENDED'] as const;
