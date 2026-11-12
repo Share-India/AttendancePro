@@ -98,7 +98,16 @@ export const employeeApi = {
     const response = await apiClient.post<ApiResponse<BulkImportResult>>(
       endpoints.employees.bulkImport,
       form,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        // The client's 20-second default is meant for a page load. This is a
+        // hundred accounts' worth of BCrypt at strength 12 — deliberately slow,
+        // and on a shared instance that is tens of seconds before any row is
+        // written. Timing out here does not cancel the import: the server keeps
+        // going, rows commit one at a time, and the response that carried the
+        // only readable copy of their passwords is thrown away.
+        timeout: 10 * 60 * 1000,
+      },
     );
     return unwrap(response);
   },
