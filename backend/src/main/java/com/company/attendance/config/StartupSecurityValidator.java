@@ -65,17 +65,20 @@ public class StartupSecurityValidator implements ApplicationListener<Application
     private final JwtProperties jwtProperties;
     private final SecurityProperties securityProperties;
     private final CorsProperties corsProperties;
+    private final MailProperties mailProperties;
     private final UserRepository userRepository;
 
     public StartupSecurityValidator(Environment environment,
                                     JwtProperties jwtProperties,
                                     SecurityProperties securityProperties,
                                     CorsProperties corsProperties,
+                                    MailProperties mailProperties,
                                     UserRepository userRepository) {
         this.environment = environment;
         this.jwtProperties = jwtProperties;
         this.securityProperties = securityProperties;
         this.corsProperties = corsProperties;
+        this.mailProperties = mailProperties;
         this.userRepository = userRepository;
     }
 
@@ -142,6 +145,23 @@ public class StartupSecurityValidator implements ApplicationListener<Application
         if (environment.getProperty("springdoc.swagger-ui.enabled", Boolean.class, false)) {
             problems.add("Swagger UI is enabled. It publishes the whole API surface; "
                     + "set SWAGGER_ENABLED=false.");
+        }
+
+        if (mailProperties.enabled()) {
+            String baseUrl = mailProperties.baseUrl();
+            if (baseUrl == null || baseUrl.isBlank()) {
+                problems.add("Mail is enabled but APP_BASE_URL is not set, so every link in "
+                        + "every message would be a bare path and go nowhere.");
+            } else if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+                problems.add("APP_BASE_URL is '" + baseUrl + "', which is not an absolute URL. "
+                        + "Links in mail cannot be relative.");
+            } else if (baseUrl.startsWith("http://") && !baseUrl.contains("localhost")) {
+                problems.add("APP_BASE_URL is plain HTTP: " + baseUrl + ". Password setup links "
+                        + "would travel unencrypted and work for whoever read them in transit.");
+            }
+            if (mailProperties.from() == null || mailProperties.from().isBlank()) {
+                problems.add("Mail is enabled but MAIL_FROM is not set.");
+            }
         }
 
         if (securityProperties.bcryptStrength() < 10) {

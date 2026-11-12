@@ -2,7 +2,10 @@ package com.company.attendance.service.impl;
 
 import com.company.attendance.audit.AuditLogService;
 import com.company.attendance.config.JwtProperties;
+import com.company.attendance.config.MailProperties;
 import com.company.attendance.config.SecurityProperties;
+import com.company.attendance.service.EmailService;
+import com.company.attendance.service.EmailTemplates;
 import com.company.attendance.dto.request.auth.ChangePasswordRequest;
 import com.company.attendance.dto.request.auth.ForgotPasswordRequest;
 import com.company.attendance.dto.request.auth.LoginRequest;
@@ -58,6 +61,9 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider tokenProvider;
     private final JwtProperties jwtProperties;
     private final SecurityProperties securityProperties;
+    private final MailProperties mailProperties;
+    private final EmailTemplates emailTemplates;
+    private final EmailService emailService;
     private final AuditLogService auditLogService;
 
     public AuthServiceImpl(UserRepository userRepository,
@@ -70,6 +76,9 @@ public class AuthServiceImpl implements AuthService {
                            JwtTokenProvider tokenProvider,
                            JwtProperties jwtProperties,
                            SecurityProperties securityProperties,
+                           MailProperties mailProperties,
+                           EmailTemplates emailTemplates,
+                           EmailService emailService,
                            AuditLogService auditLogService) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
@@ -81,6 +90,9 @@ public class AuthServiceImpl implements AuthService {
         this.tokenProvider = tokenProvider;
         this.jwtProperties = jwtProperties;
         this.securityProperties = securityProperties;
+        this.mailProperties = mailProperties;
+        this.emailTemplates = emailTemplates;
+        this.emailService = emailService;
         this.auditLogService = auditLogService;
     }
 
@@ -267,6 +279,12 @@ public class AuthServiceImpl implements AuthService {
             if (!user.isActive()) {
                 return;
             }
+            // Read these BEFORE invalidating: that query is
+            // @Modifying(clearAutomatically = true), which detaches `user`,
+            // and touching its lazy employee afterwards throws.
+            String firstName = firstNameOf(user);
+            String address = addressFor(user);
+
             passwordResetTokenRepository.invalidateOutstandingForUser(user.getId(), Instant.now());
 
             String rawToken = TokenHasher.generateToken();
@@ -282,10 +300,12 @@ public class AuthServiceImpl implements AuthService {
             auditLogService.recordAuthEvent(AuditAction.PASSWORD_RESET_REQUEST, user.getId(),
                     user.getUsername(), "Password reset link requested");
 
-            // Email delivery arrives with the notification module in Phase 9.
-            // Until then the token is logged so the flow is testable end to end.
-            log.info("Password reset token for {} (valid {} minutes): {}",
-                    user.getUsername(), securityProperties.passwordResetTokenValidityMinutes(), rawToken);
+            int minutes = securityProperties.passwordResetTokenValidityMinutes();
+            String link = mailProperties.link("/reset-password?token=" + rawToken);
+            var message = emailTemplates.passwordSetup(
+                    firstName, user.getUsername(), link,
+                    minutes + (minutes == 1 ? " minute" : " minutes"), true);
+            emailService.send(address, message.subject(), message.html(), message.text());
         });
     }
 
@@ -345,6 +365,24 @@ public class AuthServiceImpl implements AuthService {
 
         auditLogService.recordAuthEvent(AuditAction.PASSWORD_CHANGE, user.getId(),
                 user.getUsername(), "Password changed; all sessions revoked");
+    }
+
+    /** Where to write to: the employee's official address, else the login's. */
+    private String addressFor(User user) {
+        if (user.getEmployee() != null
+                && user.getEmployee().getOfficialEmail() != null
+                && !user.getEmployee().getOfficialEmail().isBlank()) {
+            return user.getEmployee().getOfficialEmail();
+        }
+        return user.getEmail();
+    }
+
+    /** "Hello Asha" reads better than "Hello S0107". */
+    private String firstNameOf(User user) {
+        if (user.getEmployee() != null && user.getEmployee().getFirstName() != null) {
+            return user.getEmployee().getFirstName();
+        }
+        return user.getUsername();
     }
 
     private void applyNewPassword(User user, String rawPassword) {

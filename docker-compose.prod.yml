@@ -55,6 +55,19 @@ services:
       # here rather than a lie about which origins are allowed.
       CORS_ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN}
       COMPANY_TIMEZONE: ${COMPANY_TIMEZONE:-Asia/Kolkata}
+      # Mail. Defaults keep delivery off, so a deploy that forgets .env logs
+      # messages instead of sending half-configured ones to real people.
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      MAIL_HOST: ${MAIL_HOST:-localhost}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@localhost}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Share India Attendance}
+      # Links in mail are absolute, so this must be the public URL, not the
+      # container's own address.
+      APP_BASE_URL: ${APP_BASE_URL:-https://${DOMAIN}}
+      SETUP_TOKEN_VALIDITY_HOURS: ${SETUP_TOKEN_VALIDITY_HOURS:-72}
       # bcrypt strength is not settable here: application.yml fixes it at 12,
       # which is what the validator wants anyway. An env var for it would
       # read like a knob that works.

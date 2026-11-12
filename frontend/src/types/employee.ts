@@ -101,12 +101,22 @@ export interface IssuedCredential {
   password: string;
 }
 
-/** What an administrator's password reset did. */
+/**
+ * How to help somebody back into their account.
+ *
+ * `EMAIL_LINK` changes nothing until they use the link — their current
+ * password keeps working, so a mail that never arrives leaves them no worse
+ * off. `ONE_TIME_PASSWORD` changes it immediately and ends every open session.
+ */
+export type ResetMethod = 'EMAIL_LINK' | 'ONE_TIME_PASSWORD';
+
+/** What an administrator's password reset did. Fields are omitted, not null. */
 export interface PasswordResetResult {
-  /** False when the employee has no login, so no password was issued. */
-  reset: boolean;
-  /** Absent, not null, when nothing was issued — the API omits null fields. */
+  outcome: 'LINK_SENT' | 'PASSWORD_ISSUED' | 'NO_LOGIN' | 'NO_EMAIL';
+  /** Set only for PASSWORD_ISSUED. Readable here and nowhere else, ever. */
   credential?: IssuedCredential;
+  /** Set only for LINK_SENT. */
+  sentTo?: string;
 }
 
 export const EMPLOYMENT_TYPES = ['PERMANENT', 'CONTRACT', 'INTERN', 'CONSULTANT'] as const;

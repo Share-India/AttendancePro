@@ -55,7 +55,28 @@ public interface EmployeeService {
      * the first-day case it would serve is already covered by the bulk import,
      * which returns a password for every person it creates.
      */
-    PasswordResetResult resetPassword(Long employeeId);
+    PasswordResetResult resetPassword(Long employeeId, ResetMethod method);
+
+    /**
+     * How an administrator wants somebody helped back into their account.
+     *
+     * <p>The two differ in more than delivery, and the difference is the thing
+     * to understand before choosing:
+     *
+     * <ul>
+     *   <li>{@link #EMAIL_LINK} changes nothing yet. The person's current
+     *       password keeps working until they use the link and choose a new
+     *       one. That is deliberate — if the mail never arrives, they are no
+     *       worse off than before.
+     *   <li>{@link #ONE_TIME_PASSWORD} changes the password immediately and
+     *       ends every open session. Use it when the old password must stop
+     *       working now, or when the person has no working mailbox.
+     * </ul>
+     */
+    enum ResetMethod {
+        EMAIL_LINK,
+        ONE_TIME_PASSWORD
+    }
 
     /**
      * The temporary password is returned once, to the administrator who created
@@ -67,22 +88,50 @@ public interface EmployeeService {
     /**
      * What a reset did.
      *
-     * @param reset      whether a password was actually issued. False when the
-     *                   employee has no login — reported rather than ignored,
-     *                   because that case otherwise looks identical to success
-     *                   right up until they try to sign in.
-     * @param credential the new password and who it is for, or null when
-     *                   {@code reset} is false
+     * <p>Every outcome is reported rather than thrown, because the two that
+     * are not success are both things an administrator can act on — and a
+     * silent failure here looks exactly like success right up until the person
+     * tries to sign in.
+     *
+     * @param outcome    what happened
+     * @param credential the one-time password and who it is for, set only for
+     *                   {@link Outcome#PASSWORD_ISSUED}
+     * @param sentTo     the address the link went to, set only for
+     *                   {@link Outcome#LINK_SENT}
      */
-    record PasswordResetResult(boolean reset, IssuedCredential credential) {
+    record PasswordResetResult(Outcome outcome, IssuedCredential credential, String sentTo) {
+
+        public static PasswordResetResult linkSent(String address) {
+            return new PasswordResetResult(Outcome.LINK_SENT, null, address);
+        }
 
         public static PasswordResetResult issued(IssuedCredential credential) {
-            return new PasswordResetResult(true, credential);
+            return new PasswordResetResult(Outcome.PASSWORD_ISSUED, credential, null);
         }
 
         public static PasswordResetResult noLogin() {
-            return new PasswordResetResult(false, null);
+            return new PasswordResetResult(Outcome.NO_LOGIN, null, null);
         }
+
+        public static PasswordResetResult noEmail() {
+            return new PasswordResetResult(Outcome.NO_EMAIL, null, null);
+        }
+    }
+
+    enum Outcome {
+        /** A setup link was mailed. Their current password still works until they use it. */
+        LINK_SENT,
+        /** A one-time password was issued and is in the result. Sessions were revoked. */
+        PASSWORD_ISSUED,
+        /** The employee has no login at all, so there was nothing to reset. */
+        NO_LOGIN,
+        /**
+         * A link was asked for and the account has no address. Nothing was
+         * changed — invalidating a password we have no way to tell somebody
+         * about would lock them out to no purpose. Issue a one-time password
+         * instead.
+         */
+        NO_EMAIL
     }
 
     /**

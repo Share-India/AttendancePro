@@ -127,16 +127,25 @@ public class EmployeeController {
 
     @PostMapping("/{id}/reset-password")
     @PreAuthorize("hasAuthority('USER_PASSWORD_RESET')")
-    @Operation(summary = "Issue a new first-time password for one account")
-    public ResponseEntity<ApiResponse<PasswordResetResult>> resetPassword(@PathVariable Long id) {
-        // Returned exactly once. The row holds only a hash, so this response is
-        // the only place the password is readable — including to whoever asked.
-        var result = employeeService.resetPassword(id);
+    @Operation(summary = "Help somebody back into their account, by emailed link or one-time password")
+    public ResponseEntity<ApiResponse<PasswordResetResult>> resetPassword(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "EMAIL_LINK") EmployeeService.ResetMethod method) {
 
-        String message = result.reset()
-                ? "A new password was issued. They must change it at next sign-in, and any open "
-                        + "session was ended."
-                : "This employee has no login, so no password was issued.";
+        var result = employeeService.resetPassword(id, method);
+
+        // A one-time password is readable exactly once, here: the row holds
+        // only a hash, so this response is the only place it exists — to
+        // whoever asked for it included.
+        String message = switch (result.outcome()) {
+            case LINK_SENT -> "A link to set a new password was sent to " + result.sentTo()
+                    + ". Their current password keeps working until they use it.";
+            case PASSWORD_ISSUED -> "A one-time password was issued. They must change it at next "
+                    + "sign-in, and any open session was ended.";
+            case NO_EMAIL -> "This employee has no email address, so no link could be sent. "
+                    + "Nothing was changed — issue a one-time password instead.";
+            case NO_LOGIN -> "This employee has no login, so there was nothing to reset.";
+        };
 
         return ResponseEntity.ok(ApiResponse.success(result, message));
     }

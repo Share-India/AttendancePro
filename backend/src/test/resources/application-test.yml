@@ -29,10 +29,19 @@ app:
     max-failed-login-attempts: 3
     account-lockout-minutes: 30
     password-reset-token-validity-minutes: 30
+    setup-token-validity-hours: 72
     bcrypt-strength: 4
     refresh-cookie-name: refresh_token
     refresh-cookie-secure: false
     refresh-cookie-same-site: Strict
+  mail:
+    # Never on in tests. A suite that can reach an SMTP server is a suite
+    # that can mail a real person from a machine nobody is watching.
+    enabled: false
+    from: no-reply@test.local
+    from-name: Attendance Pro
+    base-url: http://localhost:5173
+
   cors:
     allowed-origins: http://localhost:5173
     allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS

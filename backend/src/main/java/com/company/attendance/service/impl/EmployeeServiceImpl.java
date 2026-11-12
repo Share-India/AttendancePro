@@ -40,6 +40,7 @@ import com.company.attendance.repository.UserRepository;
 import com.company.attendance.security.AccessScopeResolver;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.EmployeeService;
+import com.company.attendance.service.PasswordSetupService;
 import com.company.attendance.service.HierarchyService;
 import com.company.attendance.service.ShiftService;
 import com.company.attendance.service.TokenRevocationService;
@@ -84,6 +85,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final ShiftService shiftService;
     private final TokenRevocationService tokenRevocationService;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordSetupService passwordSetupService;
     private final AuditLogService auditLogService;
 
     public EmployeeServiceImpl(EmployeeRepository employeeRepository,
@@ -99,6 +101,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                                ShiftService shiftService,
                                TokenRevocationService tokenRevocationService,
                                PasswordEncoder passwordEncoder,
+                               PasswordSetupService passwordSetupService,
                                AuditLogService auditLogService) {
         this.employeeRepository = employeeRepository;
         this.employeeManagerRepository = employeeManagerRepository;
@@ -113,6 +116,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         this.shiftService = shiftService;
         this.tokenRevocationService = tokenRevocationService;
         this.passwordEncoder = passwordEncoder;
+        this.passwordSetupService = passwordSetupService;
         this.auditLogService = auditLogService;
     }
 
@@ -208,13 +212,21 @@ public class EmployeeServiceImpl implements EmployeeService {
         }
 
         assignInitialShift(saved, request.shiftId());
-        String temporaryPassword = provisionUser(saved, request.roleCodes());
+        Provisioned provisioned = provisionUser(saved, request.roleCodes());
+
+        // Both, deliberately. The link is how a new joiner is meant to get in
+        // and means no administrator ever knows their working password. The
+        // one-time password is still returned because mail can be switched
+        // off, can fail, and — on a deployment whose public URL is not
+        // reachable yet — can arrive carrying a link that does not work.
+        // Losing the password as well would leave the account unreachable.
+        passwordSetupService.sendSetupLink(provisioned.user(), false);
 
         auditLogService.record(AuditAction.CREATE, "Employee", saved.getId(),
                 "Created employee " + saved.getEmployeeCode() + " (" + saved.getFullName() + ")",
                 null, snapshot(saved));
 
-        return new EmployeeCreationResult(toDetail(saved), temporaryPassword);
+        return new EmployeeCreationResult(toDetail(saved), provisioned.temporaryPassword());
     }
 
     /**
@@ -226,7 +238,7 @@ public class EmployeeServiceImpl implements EmployeeService {
      * mean that until somebody signs in and rotates, an employee code — which
      * is printed on everything — is enough to sign in as them.
      */
-    private String provisionUser(Employee employee, Set<String> requestedRoles) {
+    private Provisioned provisionUser(Employee employee, Set<String> requestedRoles) {
         String temporaryPassword = generateTemporaryPassword();
 
         User user = new User();
@@ -242,8 +254,11 @@ public class EmployeeServiceImpl implements EmployeeService {
                 : requestedRoles;
         user.setRoles(resolveRoles(roleCodes));
 
-        userRepository.save(user);
-        return temporaryPassword;
+        return new Provisioned(userRepository.save(user), temporaryPassword);
+    }
+
+    /** The new login and the password it was created with, which is readable only here. */
+    private record Provisioned(User user, String temporaryPassword) {
     }
 
     /**
@@ -287,15 +302,25 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional
-    public PasswordResetResult resetPassword(Long employeeId) {
+    public PasswordResetResult resetPassword(Long employeeId, ResetMethod method) {
         Employee employee = requireEmployee(employeeId);
         User user = userRepository.findByEmployeeId(employee.getId()).orElse(null);
 
         if (user == null) {
             // Not an error worth failing on, but it must not look like success:
-            // the administrator would otherwise pass on a password for an
-            // account that does not exist.
+            // the administrator would otherwise tell somebody their password
+            // was dealt with when no account exists to deal with.
             return PasswordResetResult.noLogin();
+        }
+
+        if (method == ResetMethod.EMAIL_LINK) {
+            String sentTo = passwordSetupService.sendSetupLink(user, true);
+            // Nothing was changed if there was nowhere to send it. Invalidating
+            // a password we have no way to tell somebody about would lock them
+            // out and achieve nothing.
+            return sentTo == null
+                    ? PasswordResetResult.noEmail()
+                    : PasswordResetResult.linkSent(sentTo);
         }
 
         return PasswordResetResult.issued(new IssuedCredential(

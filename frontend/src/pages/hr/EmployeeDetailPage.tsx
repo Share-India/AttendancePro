@@ -13,7 +13,7 @@ import { ROUTES } from '../../constants/routes';
 import { employeeApi } from '../../features/employee/employeeApi';
 import { useAuthStore } from '../../store/authStore';
 import { ApiError } from '../../types/api';
-import type { EmployeeDetail } from '../../types/employee';
+import type { EmployeeDetail, ResetMethod } from '../../types/employee';
 
 const Field = ({ label, value }: { label: string; value: string | null | undefined }) => (
   <div>
@@ -84,7 +84,7 @@ export const EmployeeDetailPage = () => {
   // response carries the one and only readable copy of the password, and the
   // dialog has to stay open to show it. Closing here loses it for good.
   const resetPassword = useMutation({
-    mutationFn: () => employeeApi.resetPassword(employeeId),
+    mutationFn: (method: ResetMethod) => employeeApi.resetPassword(employeeId, method),
   });
 
   if (isLoading) {
@@ -335,14 +335,14 @@ export const EmployeeDetailPage = () => {
       <Modal
         open={resetOpen}
         onClose={() => setResetOpen(false)}
-        title={`Reset the password for ${employee.fullName}?`}
+        title={`Help ${employee.firstName} back into their account`}
         description={
           resetPassword.data
             ? undefined
-            : 'A new one-time password will be generated and shown here once. They will have to change it the next time they sign in, and anyone signed in as them on another device will be signed out.'
+            : 'Choose how they get back in. The two differ in more than delivery — see below.'
         }
         footer={
-          resetPassword.data ? (
+          resetPassword.data && resetPassword.data.outcome !== 'NO_EMAIL' ? (
             <button type="button" className="btn-primary" onClick={() => setResetOpen(false)}>
               Done
             </button>
@@ -353,16 +353,25 @@ export const EmployeeDetailPage = () => {
               </button>
               <button
                 type="button"
+                className="btn-secondary"
+                disabled={resetPassword.isPending}
+                onClick={() => resetPassword.mutate('ONE_TIME_PASSWORD')}
+              >
+                <Icon name="key" className="text-[18px]" />
+                Issue a one-time password
+              </button>
+              <button
+                type="button"
                 className="btn-primary"
                 disabled={resetPassword.isPending}
-                onClick={() => resetPassword.mutate()}
+                onClick={() => resetPassword.mutate('EMAIL_LINK')}
               >
                 {resetPassword.isPending ? (
                   <Spinner className="h-4 w-4" />
                 ) : (
-                  <Icon name="lock_reset" className="text-[18px]" />
+                  <Icon name="mail" className="text-[18px]" />
                 )}
-                Reset password
+                Email a setup link
               </button>
             </>
           )
@@ -377,10 +386,46 @@ export const EmployeeDetailPage = () => {
             </Alert>
           )}
 
-          {resetPassword.data?.reset === false && (
+          {!resetPassword.data && (
+            <dl className="grid gap-sm text-body-sm">
+              <div className="rounded-md border border-outline-variant p-md">
+                <dt className="font-medium text-on-surface">Email a setup link</dt>
+                <dd className="mt-xs text-on-surface-variant">
+                  Sends {employee.firstName} a one-time link to choose their own password.
+                  Their current password keeps working until they use it, so nobody is locked
+                  out if the mail goes astray. You never see their password.
+                </dd>
+              </div>
+              <div className="rounded-md border border-outline-variant p-md">
+                <dt className="font-medium text-on-surface">Issue a one-time password</dt>
+                <dd className="mt-xs text-on-surface-variant">
+                  Changes their password <strong>now</strong> and signs them out everywhere.
+                  Shown to you once, to read out. Use this when the old password must stop
+                  working immediately, or when they have no working mailbox.
+                </dd>
+              </div>
+            </dl>
+          )}
+
+          {resetPassword.data?.outcome === 'NO_LOGIN' && (
             <Alert variant="warning" title="Nothing was reset">
               {employee.fullName} has no login, so there was no password to reset. Nobody can
               sign in as them until an account is created.
+            </Alert>
+          )}
+
+          {resetPassword.data?.outcome === 'NO_EMAIL' && (
+            <Alert variant="warning" title="No email address on file">
+              Nothing was changed — {employee.firstName} has no address to send a link to, and
+              invalidating their password with no way to tell them would just lock them out.
+              Issue a one-time password instead.
+            </Alert>
+          )}
+
+          {resetPassword.data?.outcome === 'LINK_SENT' && (
+            <Alert variant="success" title="Setup link sent">
+              Sent to <strong>{resetPassword.data.sentTo}</strong>. The link works once.
+              {employee.firstName}&rsquo;s current password keeps working until they use it.
             </Alert>
           )}
 

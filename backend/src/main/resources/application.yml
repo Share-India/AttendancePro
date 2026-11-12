@@ -15,6 +15,45 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
+  # How to reach the SMTP server. What the mail says and where its links point
+  # is app.mail further down; this is only the transport.
+  #
+  # STARTTLS on 587 rather than implicit TLS on 465: 465 works too, but it
+  # needs a different property set, and getting the pair out of step produces a
+  # connection that hangs rather than one that fails.
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            # Refuse to continue in the clear if STARTTLS is not offered.
+            # Without this a server that has lost its certificate silently
+            # downgrades, and the password is sent in plain text.
+            required: true
+          ssl:
+            # Check that the certificate actually belongs to MAIL_HOST.
+            # Jakarta Mail 2.1 turns this on by default, but it is stated here
+            # because it decides which hostnames work and that is not obvious:
+            # this provider serves a certificate for the host it is ASKED for.
+            # mail.shareindia.co.in presents a certificate covering both
+            # mail. and webmail.; webmail.shareindia.co.in presents one for
+            # cp01.premierdc.in and nothing else. Same machine, same IP —
+            # so webmail. as MAIL_HOST fails verification and sends nothing,
+            # with an error that reads like a broken certificate rather than
+            # the wrong name.
+            checkserveridentity: true
+          # Without these a dead mail host hangs the request thread holding
+          # the transaction open, and a slow SMTP server becomes an outage.
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:attendance_db}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
     username: ${DB_USERNAME:root}
@@ -79,6 +118,12 @@ app:
     max-failed-login-attempts: ${MAX_FAILED_LOGIN_ATTEMPTS:5}
     account-lockout-minutes: ${ACCOUNT_LOCKOUT_MINUTES:30}
     password-reset-token-validity-minutes: ${PASSWORD_RESET_VALIDITY_MINUTES:30}
+    # A new joiner's setup link is not a reset. Thirty minutes is right for a
+    # link somebody asked for seconds ago and is waiting on; it is wrong for
+    # one sent to forty people at once, some of whom are on leave, in another
+    # office, or will not open work mail until Monday. An expired setup link
+    # means HR issuing another one for every person who was slow.
+    setup-token-validity-hours: ${SETUP_TOKEN_VALIDITY_HOURS:72}
     bcrypt-strength: 12
     refresh-cookie-name: refresh_token
     refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:false}
@@ -89,6 +134,19 @@ app:
       max-requests: ${AUTH_RATE_LIMIT_MAX:20}
       window-seconds: ${AUTH_RATE_LIMIT_WINDOW_SECONDS:60}
     refresh-cookie-same-site: Strict
+
+  mail:
+    # Off by default. A developer running the test suite or clicking through a
+    # local build has no business putting real mail in a real inbox, and a
+    # deployment whose links do not yet resolve would spend each one-time token
+    # on a dead link. Turn it on deliberately, per environment.
+    enabled: ${MAIL_ENABLED:false}
+    from: ${MAIL_FROM:no-reply@localhost}
+    from-name: ${MAIL_FROM_NAME:Attendance Pro}
+    # Links in mail cannot be relative. Wrong here means mail that looks
+    # correct and whose every link is broken, so the startup validator checks
+    # it rather than trusting it.
+    base-url: ${APP_BASE_URL:http://localhost:5173}
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
@@ -118,6 +176,18 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+  health:
+    # spring-boot-starter-mail registers a health indicator that opens an SMTP
+    # connection, and a failure there makes the whole application report DOWN.
+    #
+    # That is the wrong severity by a wide margin. Mail is best effort here —
+    # EmailService already swallows send failures, because the approval or
+    # account the message is about has committed either way. Letting an
+    # unreachable mail host turn /actuator/health into a 503 would fail the
+    # container's healthcheck and take a perfectly working attendance system
+    # out of service because nobody could be told about a leave request.
+    mail:
+      enabled: false
 
 logging:
   level:

@@ -2,6 +2,7 @@ package com.company.attendance.integration;
 
 import com.company.attendance.config.CorsProperties;
 import com.company.attendance.config.JwtProperties;
+import com.company.attendance.config.MailProperties;
 import com.company.attendance.config.SecurityProperties;
 import com.company.attendance.config.StartupSecurityValidator;
 import com.company.attendance.entity.Employee;
@@ -164,11 +165,16 @@ class SecurityHardeningIT {
 
         JwtProperties jwt = new JwtProperties(secret, 15, 7, "attendance-api");
         SecurityProperties security = new SecurityProperties(
-                5, 15, 30, bcryptStrength, "refresh_token", cookieSecure, "Strict");
+                5, 15, 30, 72, bcryptStrength, "refresh_token", cookieSecure, "Strict");
         CorsProperties cors = new CorsProperties(
                 origins, List.of("GET"), List.of("*"), List.of("X-Request-Id"), true, 3600);
 
-        return new StartupSecurityValidator(environment, jwt, security, cors, userRepository);
+        // Mail off, so these cases test only what they name. The checks on
+        // the mail settings live in PasswordResetIT.
+        MailProperties mail = new MailProperties(
+                false, "no-reply@test.local", "Attendance Pro", "https://example.com");
+
+        return new StartupSecurityValidator(environment, jwt, security, cors, mail, userRepository);
     }
 
     /**

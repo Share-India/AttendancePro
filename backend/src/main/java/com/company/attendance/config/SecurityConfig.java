@@ -24,7 +24,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties({JwtProperties.class, SecurityProperties.class, CorsProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, SecurityProperties.class, CorsProperties.class,
+        MailProperties.class})
 public class SecurityConfig {
 
     private static final String[] PUBLIC_ENDPOINTS = {
