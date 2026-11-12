@@ -20,6 +20,7 @@ import com.company.attendance.repository.RefreshTokenRepository;
 import com.company.attendance.repository.RoleRepository;
 import com.company.attendance.repository.ShiftRepository;
 import com.company.attendance.repository.UserRepository;
+import com.company.attendance.repository.WeeklyOffRepository;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.support.DatabaseCleaner;
 import com.company.attendance.service.EmployeeService;
@@ -38,6 +39,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,6 +64,7 @@ class EmployeeManagementIT {
     @Autowired RefreshTokenRepository refreshTokenRepository;
     @Autowired PasswordResetTokenRepository passwordResetTokenRepository;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired WeeklyOffRepository weeklyOffRepository;
     @Autowired DatabaseCleaner databaseCleaner;
 
     private Long officeId;
@@ -398,6 +401,100 @@ class EmployeeManagementIT {
     private MockMultipartFile csv(String body) {
         return new MockMultipartFile("file", "import.csv", "text/csv",
                 (IMPORT_HEADER + body).getBytes(StandardCharsets.UTF_8));
+    }
+
+    // -----------------------------------------------------------------
+    // Roles and the Saturday roster, carried by the file itself
+    // -----------------------------------------------------------------
+
+    private static final String ROSTER_HEADER =
+            "employee_code,first_name,last_name,official_email,joining_date,office_code,"
+                    + "employment_type,role_codes,saturday_off_pattern\n";
+
+    private MockMultipartFile rosterCsv(String body) {
+        return new MockMultipartFile("file", "import.csv", "text/csv",
+                (ROSTER_HEADER + body).getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("roles named in the file are granted, and EMPLOYEE is always kept")
+    void importGrantsRoles() {
+        var result = employeeImportService.importCsv(rosterCsv("""
+                EMP4001,Hrithik,Rawat,hrithik@company.com,2024-01-10,HO,PERMANENT,HR,
+                EMP4002,Vidhi,Shah,vidhi@company.com,2024-01-10,HO,PERMANENT,MANAGER,
+                EMP4003,Asha,Rao,asha4003@company.com,2024-01-10,HO,PERMANENT,,
+                """));
+
+        assertThat(result.imported()).isEqualTo(3);
+        assertThat(result.failed()).isZero();
+
+        // EMPLOYEE is added alongside, never replaced: without it somebody
+        // cannot punch their own attendance, and an HR manager who cannot
+        // clock in is the kind of thing nobody notices until Monday.
+        assertThat(roleCodesOf("EMP4001")).containsExactlyInAnyOrder("EMPLOYEE", "HR");
+        assertThat(roleCodesOf("EMP4002")).containsExactlyInAnyOrder("EMPLOYEE", "MANAGER");
+        assertThat(roleCodesOf("EMP4003")).containsExactly("EMPLOYEE");
+    }
+
+    @Test
+    @DisplayName("the Saturday pattern becomes weekly-off rules for the weeks they are OFF")
+    void importWritesTheSaturdayRoster() {
+        var result = employeeImportService.importCsv(rosterCsv("""
+                EMP4101,Rohit,Shelar,rohit4101@company.com,2024-01-10,HO,PERMANENT,,1st & 3rd
+                EMP4102,Vipul,Gawde,vipul@company.com,2024-01-10,HO,PERMANENT,,2nd & 4th
+                EMP4103,Yash,Jadhav,yash@company.com,2024-01-10,HO,PERMANENT,,All Sat Working
+                """));
+
+        assertThat(result.imported()).isEqualTo(3);
+        assertThat(result.warnings()).isEmpty();
+
+        // OFF weeks, not worked weeks. Reading it the other way round inverts
+        // everybody's month while looking perfectly correct in aggregate.
+        assertThat(saturdayWeeksOffFor("EMP4101")).containsExactly(1, 3);
+        assertThat(saturdayWeeksOffFor("EMP4102")).containsExactly(2, 4);
+        assertThat(saturdayWeeksOffFor("EMP4103")).isEmpty();
+
+        // Nobody carries week 5. That absence is what makes a month's fifth
+        // Saturday a working day for everyone, with no rule saying so.
+        assertThat(weeklyOffRepository.findAllActive())
+                .filteredOn(rule -> "EMPLOYEE".equals(rule.getScopeType()))
+                .noneMatch(rule -> rule.getWeekOfMonth() != null && rule.getWeekOfMonth() == 5);
+    }
+
+    @Test
+    @DisplayName("an unrecognised Saturday pattern warns without losing the employee")
+    void importWarnsOnAnUnknownSaturdayPattern() {
+        var result = employeeImportService.importCsv(rosterCsv("""
+                EMP4201,Ira,Shah,ira@company.com,2024-01-10,HO,PERMANENT,,every other one
+                """));
+
+        // Imported and able to sign in, just with no roster — and told so.
+        // Rejecting the whole row over a misspelled pattern is the wrong trade.
+        assertThat(result.imported()).isEqualTo(1);
+        assertThat(result.failed()).isZero();
+        assertThat(result.warnings()).hasSize(1);
+        assertThat(result.warnings().getFirst().message()).contains("not recognised");
+        assertThat(saturdayWeeksOffFor("EMP4201")).isEmpty();
+    }
+
+    private List<String> roleCodesOf(String employeeCode) {
+        // findWithRolesById, not findByUsername: roles are lazy, and reading
+        // them outside a session is how this produced a LazyInitialization
+        // failure rather than an answer.
+        Long userId = userRepository.findByUsernameIgnoreCase(employeeCode).orElseThrow().getId();
+        return userRepository.findWithRolesById(userId).orElseThrow()
+                .getRoles().stream().map(Role::getCode).toList();
+    }
+
+    private List<Integer> saturdayWeeksOffFor(String employeeCode) {
+        Long id = employeeRepository.findByEmployeeCode(employeeCode).orElseThrow().getId();
+        return weeklyOffRepository.findAllActive().stream()
+                .filter(rule -> "EMPLOYEE".equals(rule.getScopeType()))
+                .filter(rule -> id.equals(rule.getScopeId()))
+                .filter(rule -> rule.getDayOfWeek() == 6)
+                .map(rule -> (int) rule.getWeekOfMonth())
+                .sorted()
+                .toList();
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.company.attendance.exception.BusinessException;
 import com.company.attendance.repository.DepartmentRepository;
 import com.company.attendance.repository.DesignationRepository;
 import com.company.attendance.dto.request.master.ManagerAssignmentRequest;
+import com.company.attendance.dto.request.master.WeeklyOffRequest;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.OfficeRepository;
 import com.company.attendance.repository.ShiftRepository;
@@ -53,7 +54,34 @@ public class EmployeeImportService {
 
     private static final List<String> OPTIONAL_HEADERS = List.of(
             "middle_name", "personal_email", "mobile", "date_of_birth", "gender",
-            "department_code", "designation_code", "manager_employee_code", "shift_code");
+            "department_code", "designation_code", "manager_employee_code", "shift_code",
+            "role_codes", "saturday_off_pattern");
+
+    /**
+     * Which Saturdays somebody is OFF, spelled the way a roster spreadsheet
+     * spells it.
+     *
+     * <p>An OFF pattern, not a working one: "1st & 3rd" means off on the 1st
+     * and 3rd Saturday and working the 2nd, 4th and 5th. Reading it the other
+     * way round inverts every person's month while looking perfectly correct
+     * in aggregate, so the accepted spellings are listed rather than parsed.
+     *
+     * <p>Nobody is ever given week 5. That absence is what makes a month's
+     * fifth Saturday a working day for everyone, with no rule saying so.
+     */
+    private static final Map<String, List<Integer>> SATURDAY_PATTERNS = Map.of(
+            "1st & 3rd", List.of(1, 3),
+            "1st and 3rd", List.of(1, 3),
+            "1 & 3", List.of(1, 3),
+            "2nd & 4th", List.of(2, 4),
+            "2nd and 4th", List.of(2, 4),
+            "2 & 4", List.of(2, 4),
+            "all sat working", List.of(),
+            "all", List.of(),
+            "none", List.of());
+
+    /** ISO day-of-week, matching java.time.DayOfWeek. */
+    private static final int SATURDAY = 6;
 
     private final EmployeeService employeeService;
     private final DepartmentRepository departmentRepository;
@@ -61,6 +89,7 @@ public class EmployeeImportService {
     private final OfficeRepository officeRepository;
     private final EmployeeRepository employeeRepository;
     private final ShiftRepository shiftRepository;
+    private final WeeklyOffService weeklyOffService;
     private final AuditLogService auditLogService;
 
     public EmployeeImportService(EmployeeService employeeService,
@@ -69,6 +98,7 @@ public class EmployeeImportService {
                                  OfficeRepository officeRepository,
                                  EmployeeRepository employeeRepository,
                                  ShiftRepository shiftRepository,
+                                 WeeklyOffService weeklyOffService,
                                  AuditLogService auditLogService) {
         this.employeeService = employeeService;
         this.departmentRepository = departmentRepository;
@@ -76,6 +106,7 @@ public class EmployeeImportService {
         this.officeRepository = officeRepository;
         this.employeeRepository = employeeRepository;
         this.shiftRepository = shiftRepository;
+        this.weeklyOffService = weeklyOffService;
         this.auditLogService = auditLogService;
     }
 
@@ -85,9 +116,14 @@ public class EmployeeImportService {
 
         // The sample row uses a day past the 12th so the day-first convention
         // is visible at a glance rather than needing to be looked up.
+        //
+        // role_codes is semicolon-separated because a comma ends a CSV field,
+        // and saturday_off_pattern says which Saturdays somebody is OFF — the
+        // opposite reading inverts their month while looking right in total.
         return String.join(",", headers) + "\n"
                 + "EMP1002,Asha,Rao,asha.rao@company.com,2024-04-25,HO,PERMANENT,"
-                + ",asha@personal.com,+91 9876543210,1995-06-14,Female,ADMIN-DEPT,SYS-ADMIN,,GEN\n";
+                + ",asha@personal.com,+91 9876543210,1995-06-14,Female,ADMIN-DEPT,SYS-ADMIN,,GEN,"
+                + "MANAGER;HR,1st & 3rd\n";
     }
 
     public BulkImportResultResponse importCsv(MultipartFile file) {
@@ -149,6 +185,16 @@ public class EmployeeImportService {
                     String managerCode = value(values, columns, "manager_employee_code");
                     if (managerCode != null) {
                         managerLinks.add(new PendingManagerLink(rowNumber, employeeCode, managerCode));
+                    }
+
+                    // A warning, never an error: the person is imported and can
+                    // sign in either way, and rejecting a whole row over a
+                    // misspelled roster pattern would be the wrong trade.
+                    var rosterProblem = applySaturdayPattern(created.employee().id(),
+                            value(values, columns, "saturday_off_pattern"));
+                    if (rosterProblem.isPresent()) {
+                        warnings.add(new BulkImportResultResponse.RowError(
+                                rowNumber, employeeCode, rosterProblem.get()));
                     }
                 } catch (BusinessException e) {
                     // Expected, row-level problems: report and carry on.
@@ -299,7 +345,7 @@ public class EmployeeImportService {
                 // plain master-data lookup, so it resolves on this pass.
                 null,
                 shiftId,
-                Set.of("EMPLOYEE"),
+                roleCodes(values, columns),
                 null,
                 null);
     }
@@ -354,6 +400,62 @@ public class EmployeeImportService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, column + " is required");
         }
         return value;
+    }
+
+    /**
+     * Roles for this row, defaulting to EMPLOYEE.
+     *
+     * <p>Separated by semicolons, because this is a CSV and a comma would end
+     * the field. EMPLOYEE is always included even when other roles are named:
+     * it is what lets somebody punch their own attendance, and an HR manager
+     * who cannot clock in is the kind of thing nobody notices until Monday.
+     */
+    private Set<String> roleCodes(String[] values, Map<String, Integer> columns) {
+        String raw = value(values, columns, "role_codes");
+        if (raw == null || raw.isBlank()) {
+            return Set.of("EMPLOYEE");
+        }
+        Set<String> codes = new java.util.LinkedHashSet<>();
+        codes.add("EMPLOYEE");
+        for (String part : raw.split("[;|]")) {
+            String code = part.trim().toUpperCase(Locale.ROOT);
+            if (!code.isBlank()) {
+                codes.add(code);
+            }
+        }
+        return codes;
+    }
+
+    /**
+     * Writes the weekly-off rules for somebody's Saturday roster.
+     *
+     * <p>Two rows for an alternate-Saturday pattern, none for somebody who
+     * works every Saturday. Returns a description of the problem when the
+     * pattern is not one this understands, so the row is reported rather than
+     * silently given no roster at all — which would look identical to
+     * "works every Saturday".
+     *
+     * <p>This does not touch the company-wide Saturday rule, and cannot: every
+     * weekly-off rule means "off", and a more specific one cannot turn a day
+     * back on. While a GLOBAL Saturday rule is active, everybody is off every
+     * Saturday whatever is written here. Remove it under Admin, Weekly offs.
+     */
+    private java.util.Optional<String> applySaturdayPattern(Long employeeId, String pattern) {
+        if (pattern == null || pattern.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        List<Integer> weeksOff = SATURDAY_PATTERNS.get(
+                pattern.trim().toLowerCase(Locale.ROOT));
+        if (weeksOff == null) {
+            return java.util.Optional.of("Saturday pattern '" + pattern
+                    + "' was not recognised, so no Saturday roster was set. Use one of: "
+                    + "1st & 3rd, 2nd & 4th, All Sat Working.");
+        }
+        for (Integer week : weeksOff) {
+            weeklyOffService.create(new WeeklyOffRequest(
+                    "EMPLOYEE", employeeId, SATURDAY, week, null, null, true));
+        }
+        return java.util.Optional.empty();
     }
 
     private String value(String[] values, Map<String, Integer> columns, String column) {
