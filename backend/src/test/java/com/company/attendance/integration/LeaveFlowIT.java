@@ -251,17 +251,35 @@ class LeaveFlowIT {
     // -----------------------------------------------------------------
 
     @Test
-    @DisplayName("a Friday-to-Monday leave costs two days when weekends are not charged")
+    @DisplayName("a weekend at the end of a leave is not charged")
     void weekendIsNotChargedWhenTypeSaysSo() {
+        // Friday to Sunday, not Friday to Monday. The original range is now
+        // charged in full by the sandwich rule — nothing follows this weekend,
+        // so it stays free, which is what this test is actually about.
+        LocalDate friday = nextMonday.plusDays(4);
+
+        var result = leaveService.apply(applicant, apply(friday, friday.plusDays(2)));
+
+        assertThat(result.request().totalDays()).isEqualByComparingTo("1");
+        assertThat(result.request().calendarDays()).isEqualTo(3);
+        assertThat(result.countExplanation()).contains("2 weekly offs");
+    }
+
+    @Test
+    @DisplayName("a Friday-to-Monday leave costs four days: the weekend is sandwiched")
+    void weekendIsChargedWhenSandwiched() {
+        // The counterpart. Leave either side of the weekend charges it, so the
+        // same four calendar days now cost four, not two. Asserted through
+        // apply() rather than the expansion service so the figure that reaches
+        // the request — and the balance — is the one being checked.
         LocalDate friday = nextMonday.plusDays(4);
         LocalDate monday = nextMonday.plusDays(7);
 
         var result = leaveService.apply(applicant, apply(friday, monday));
 
-        // Friday and Monday only; Saturday and Sunday are free.
-        assertThat(result.request().totalDays()).isEqualByComparingTo("2");
+        assertThat(result.request().totalDays()).isEqualByComparingTo("4");
         assertThat(result.request().calendarDays()).isEqualTo(4);
-        assertThat(result.countExplanation()).contains("2 weekly offs");
+        assertThat(result.countExplanation()).contains("2 non-working days");
     }
 
     @Test
@@ -288,21 +306,26 @@ class LeaveFlowIT {
         holiday.setHolidayYear((short) nextMonday.getYear());
         holidayRepository.save(holiday);
 
-        var result = leaveService.apply(applicant, apply(nextMonday, nextMonday.plusDays(2)));
+        // Monday to Tuesday, with the holiday on the Tuesday. Running to
+        // Wednesday would put leave either side of it and the sandwich rule
+        // would charge it — which SandwichLeaveIT covers.
+        var result = leaveService.apply(applicant, apply(nextMonday, nextMonday.plusDays(1)));
 
-        // Three weekdays, one of which is a holiday.
-        assertThat(result.request().totalDays()).isEqualByComparingTo("2");
+        assertThat(result.request().totalDays()).isEqualByComparingTo("1");
         assertThat(result.countExplanation()).contains("1 holiday");
     }
 
     @Test
     @DisplayName("non-deductible days are still recorded, so the count can be explained")
     void nonDeductibleDaysAreKept() {
+        // Friday to Sunday: the weekend is trailing, so it stays
+        // non-deductible and is still recorded. Friday to Monday would bridge
+        // it and leave nothing non-deductible to find.
         LocalDate friday = nextMonday.plusDays(4);
-        var result = leaveService.apply(applicant, apply(friday, friday.plusDays(3)));
+        var result = leaveService.apply(applicant, apply(friday, friday.plusDays(2)));
 
         var days = result.request().days();
-        assertThat(days).hasSize(4);
+        assertThat(days).hasSize(3);
         assertThat(days.stream().filter(day -> !day.deductible())).hasSize(2);
     }
 
