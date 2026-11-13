@@ -9,6 +9,7 @@ import com.company.attendance.entity.LeaveType;
 import com.company.attendance.enums.AuditAction;
 import com.company.attendance.enums.ErrorCode;
 import com.company.attendance.exception.BusinessException;
+import com.company.attendance.entity.CompanySetting;
 import com.company.attendance.repository.CompanySettingRepository;
 import com.company.attendance.repository.LeaveBalanceRepository;
 import com.company.attendance.repository.LeavePolicyRepository;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
@@ -50,17 +52,20 @@ public class LeaveBalanceService {
     private final LeaveTypeRepository leaveTypeRepository;
     private final LeavePolicyRepository leavePolicyRepository;
     private final CompanySettingRepository companySettingRepository;
+    private final PaidLeaveAccrualService paidLeaveAccrualService;
     private final AuditLogService auditLogService;
 
     public LeaveBalanceService(LeaveBalanceRepository leaveBalanceRepository,
                                LeaveTypeRepository leaveTypeRepository,
                                LeavePolicyRepository leavePolicyRepository,
                                CompanySettingRepository companySettingRepository,
+                               PaidLeaveAccrualService paidLeaveAccrualService,
                                AuditLogService auditLogService) {
         this.leaveBalanceRepository = leaveBalanceRepository;
         this.leaveTypeRepository = leaveTypeRepository;
         this.leavePolicyRepository = leavePolicyRepository;
         this.companySettingRepository = companySettingRepository;
+        this.paidLeaveAccrualService = paidLeaveAccrualService;
         this.auditLogService = auditLogService;
     }
 
@@ -96,9 +101,52 @@ public class LeaveBalanceService {
      */
     @Transactional
     public LeaveBalance getOrCreate(Employee employee, LeaveType leaveType, short leaveYear) {
-        return leaveBalanceRepository
+        LeaveBalance balance = leaveBalanceRepository
                 .findByEmployeeIdAndLeaveTypeIdAndLeaveYear(employee.getId(), leaveType.getId(), leaveYear)
                 .orElseGet(() -> provision(employee, leaveType, leaveYear));
+
+        return accrue(employee, balance);
+    }
+
+    /**
+     * Brings a monthly-accrued balance up to what has been earned by today.
+     *
+     * <p>Here rather than in a scheduled job because nothing in this
+     * application runs on a timer. The entitlement is a function of the
+     * joining date and the date being asked about, so it is computed when
+     * somebody looks — the same lazy settlement the attendance side uses. A
+     * server switched off for a month comes back with the right figure instead
+     * of a month short, and there is no missed run to replay.
+     *
+     * <p>Only ever increases. If the accrued figure ever came out lower than
+     * what is already credited — a corrected joining date, a changed rule —
+     * writing it down would silently remove leave somebody may already have
+     * booked against. A reduction is a decision for a human and belongs in
+     * {@link #adjust}, where it is audited and carries a reason.
+     */
+    private LeaveBalance accrue(Employee employee, LeaveBalance balance) {
+        if (!"MONTHLY".equals(balance.getLeaveType().getAccrualType())) {
+            return balance;
+        }
+
+        BigDecimal earned = paidLeaveAccrualService.accruedBy(
+                employee, leaveYearStart(balance.getLeaveYear()), LocalDate.now(),
+                accrualStartDate());
+
+        if (earned.compareTo(balance.getCreditedDays()) <= 0) {
+            return balance;
+        }
+
+        BigDecimal before = balance.getCreditedDays();
+        balance.setCreditedDays(earned);
+        LeaveBalance saved = leaveBalanceRepository.save(balance);
+
+        auditLogService.record(AuditAction.UPDATE, "LeaveBalance", saved.getId(),
+                "Accrued " + balance.getLeaveType().getCode() + " for "
+                        + employee.getEmployeeCode() + ": " + before + " to " + earned + " days",
+                Map.of("creditedDays", before), Map.of("creditedDays", earned));
+
+        return saved;
     }
 
     private LeaveBalance provision(Employee employee, LeaveType leaveType, short leaveYear) {
@@ -158,6 +206,36 @@ public class LeaveBalanceService {
 
         return quota.multiply(BigDecimal.valueOf(monthsRemaining))
                 .divide(BigDecimal.valueOf(12), 1, RoundingMode.DOWN);
+    }
+
+    /**
+     * The date this system took over the leave ledger, or null if it always
+     * had it.
+     *
+     * <p>Balances carried in from a spreadsheet are net of that year's accrual
+     * already. Without this bound the accrual would credit those months a
+     * second time — see V24, which sets the value and explains why moving it
+     * is a bad idea.
+     *
+     * <p>An unparseable value is treated as absent rather than thrown: a typo
+     * in a settings row should not stop everybody reading their balance, and
+     * the log says which row is wrong.
+     */
+    private LocalDate accrualStartDate() {
+        return companySettingRepository.findBySettingKey("leave.accrual_start_date")
+                .map(CompanySetting::getSettingValue)
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> {
+                    try {
+                        return LocalDate.parse(value.trim());
+                    } catch (DateTimeParseException e) {
+                        log.warn("leave.accrual_start_date is not a date: '{}'. Accruing from the "
+                                + "leave-year opening instead, which may double-count carried-in "
+                                + "balances.", value);
+                        return null;
+                    }
+                })
+                .orElse(null);
     }
 
     private LocalDate leaveYearStart(short leaveYear) {
