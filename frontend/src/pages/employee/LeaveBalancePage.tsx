@@ -125,8 +125,22 @@ export const LeaveBalancePage = () => {
 
       {data && data.length > 0 && (
         <p className="mt-lg text-body-sm text-outline">
-          Balances are for leave year {data[0].leaveYear}. A mid-year joining date reduces the
-          entitlement proportionally.
+          {/*
+            Was "a mid-year joining date reduces the entitlement
+            proportionally", which described the old annual-quota types and is
+            wrong twice over. Paid Leave is not pro-rated — it accrues month by
+            month, so a joiner simply has fewer months rather than a reduced
+            share. And the joining date does matter, but as a cliff on the
+            10th, not as a proportion: join on the 9th and the whole month
+            counts, join on the 11th and none of it does.
+
+            Spelled out because it is the rule new joiners ask about, and
+            "proportionally" sent them looking for a fraction that does not
+            exist.
+          */}
+          Balances are for leave year {data[0].leaveYear}. Paid Leave is credited monthly — one day
+          a month during probation, two a month after — and unused days carry forward. Joining on
+          or before the 10th earns that month&rsquo;s leave; joining after the 10th does not.
         </p>
       )}
     </div>
