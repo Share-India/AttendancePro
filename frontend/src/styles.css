@@ -149,6 +149,29 @@
   }
 }
 
+@layer utilities {
+  /*
+   * Scrolls, but without the scrollbar taking up room or drawing the eye.
+   * Used on the sidebar menu, where the platform scrollbar is wider than the
+   * gap beside the labels and arrives with stepper arrows on Windows.
+   *
+   * Only for a container whose scrollability is already obvious — the sidebar
+   * cuts items off mid-row, which reads as "there is more". Hiding the bar on
+   * something that looks complete leaves no way to tell there is anything
+   * below. The wheel, trackpad, touch, Page Up/Down and arrow keys all still
+   * work, and focusing an item below the fold still scrolls it into view.
+   */
+  .scrollbar-hidden {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* legacy Edge */
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -67,7 +67,15 @@ export const Sidebar = ({ open, onNavigate }: SidebarProps) => {
       className={cn(
         // The drawer spans the full height on a phone, so it owns both
         // insets: the notch above and the home indicator below.
-        'pad-safe-top pad-safe-bottom fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col overflow-y-auto overscroll-contain border-r border-outline-variant/60 bg-surface transition-transform duration-200 lg:static lg:translate-x-0',
+        //
+        // On desktop it is sticky and exactly one viewport tall, which is what
+        // makes the menu scroll. As a static flex item it had no bounded
+        // height — it simply grew as tall as its content, so the `flex-1
+        // overflow-y-auto` on the <nav> below had nothing to scroll inside and
+        // reaching the last menu item meant scrolling the whole page, carrying
+        // the content away with it. Sticky rather than fixed so the sidebar
+        // still participates in the layout and the main column keeps its width.
+        'pad-safe-top pad-safe-bottom fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col overflow-y-auto overscroll-contain scrollbar-hidden border-r border-outline-variant/60 bg-surface transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
         open ? 'translate-x-0' : '-translate-x-full',
       )}
       aria-label="Main navigation"
@@ -108,7 +116,7 @@ export const Sidebar = ({ open, onNavigate }: SidebarProps) => {
         </NavLink>
       </div>
 
-      <nav className="flex-1 space-y-px overflow-y-auto px-md pb-lg">
+      <nav className="scrollbar-hidden flex-1 space-y-px overflow-y-auto px-md pb-lg">
         {items.map((item) => (
           <div key={item.to} className="space-y-px">
             <NavRow item={item} onNavigate={onNavigate} />
