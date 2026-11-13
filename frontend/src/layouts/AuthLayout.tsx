@@ -87,6 +87,26 @@ export const AuthLayout = ({ title, subtitle, children }: AuthLayoutProps) => (
         <AppLogo tone="light" size={28} labelClassName="text-headline-md" />
       </div>
 
+      {/*
+        The corporate logotype, for the phone layout only — on wider screens it
+        is in the brand panel, which is hidden here. Without it a phone shows
+        the product mark and nothing saying whose portal this is.
+
+        On a white card like the panel's, though for a different reason: the
+        file is not transparent, so against this off-white surface it otherwise
+        shows as a white rectangle with hard edges. The card makes that shape
+        deliberate instead of looking like a rendering fault.
+      */}
+      <div className="flex justify-center px-margin-mobile pt-lg md:hidden">
+        <div className="rounded-lg bg-white px-lg py-md shadow-raised">
+          <img
+            src="/brand/shareindia-logo.png"
+            alt="Share India"
+            className="h-16 w-auto select-none"
+          />
+        </div>
+      </div>
+
       <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col justify-center px-margin-mobile py-xl md:px-margin-desktop">
         <header className="mb-lg text-center md:text-left">
           <h2 className="mb-xs text-headline-lg-mobile text-on-surface md:text-headline-lg">{title}</h2>
