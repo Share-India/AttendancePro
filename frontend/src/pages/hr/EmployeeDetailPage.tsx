@@ -10,6 +10,7 @@ import { SelectField } from '../../components/form/SelectField';
 import { StatusChip, employmentStatusTone } from '../../components/common/StatusChip';
 import { PERMISSIONS } from '../../constants/permissions';
 import { ROUTES } from '../../constants/routes';
+import { useShifts } from '../../features/admin/masterQueries';
 import { employeeApi } from '../../features/employee/employeeApi';
 import { useAuthStore } from '../../store/authStore';
 import { ApiError } from '../../types/api';
@@ -27,6 +28,7 @@ export const EmployeeDetailPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const { data: shifts } = useShifts();
 
   const employeeId = Number(id);
 
@@ -37,6 +39,9 @@ export const EmployeeDetailPage = () => {
 
   const [managerOpen, setManagerOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [shiftOpen, setShiftOpen] = useState(false);
+  const [shiftId, setShiftId] = useState('');
+  const [shiftFrom, setShiftFrom] = useState(new Date().toISOString().slice(0, 10));
   const [managerId, setManagerId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().slice(0, 10));
 
@@ -83,6 +88,21 @@ export const EmployeeDetailPage = () => {
   // mutation on this page, success is not the end of the interaction: the
   // response carries the one and only readable copy of the password, and the
   // dialog has to stay open to show it. Closing here loses it for good.
+  const assignShift = useMutation({
+    mutationFn: () =>
+      employeeApi.assignShift(employeeId, {
+        shiftId: Number(shiftId),
+        effectiveFrom: shiftFrom,
+      }),
+    onSuccess: () => {
+      // The record carries currentShift and shiftHistory, and attendance is
+      // computed against the shift, so both are stale the moment this lands.
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
+      setShiftOpen(false);
+    },
+  });
+
   const resetPassword = useMutation({
     mutationFn: (method: ResetMethod) => employeeApi.resetPassword(employeeId, method),
   });
@@ -122,6 +142,8 @@ export const EmployeeDetailPage = () => {
   // Gating on a view permission would offer a button that then fails.
   const canManage = hasPermission(PERMISSIONS.EMPLOYEE_UPDATE);
   const canResetPassword = hasPermission(PERMISSIONS.USER_PASSWORD_RESET);
+  // The same authority the API enforces on PUT /employees/{id}/shift.
+  const canAssignShift = hasPermission(PERMISSIONS.SHIFT_ASSIGN);
 
   return (
     <div className="mx-auto max-w-[1280px]">
@@ -287,6 +309,33 @@ export const EmployeeDetailPage = () => {
                 No shift assigned. Attendance cannot be computed until one is set.
               </Alert>
             )}
+
+            {/*
+              The only way to change a shift after the employee is created. The
+              edit form hides its shift field once the record exists and says
+              the shift is changed "from the employee record" — this is that,
+              and until it existed the sentence pointed at nothing.
+
+              Separate from the edit form on purpose: a shift change is dated
+              and keeps its history, so it is not the same kind of edit as
+              correcting a phone number.
+            */}
+            {canAssignShift && (
+              <button
+                type="button"
+                className="mt-md text-body-sm text-primary underline underline-offset-2"
+                onClick={() => {
+                  assignShift.reset();
+                  setShiftId(
+                    employee.currentShift ? String(employee.currentShift.shiftId) : '',
+                  );
+                  setShiftFrom(new Date().toISOString().slice(0, 10));
+                  setShiftOpen(true);
+                }}
+              >
+                {employee.currentShift ? 'Change shift' : 'Assign a shift'}
+              </button>
+            )}
           </section>
 
           <section className="card p-lg">
@@ -331,6 +380,71 @@ export const EmployeeDetailPage = () => {
           )}
         </div>
       </div>
+
+      <Modal
+        open={shiftOpen}
+        onClose={() => setShiftOpen(false)}
+        title={`Shift for ${employee.fullName}`}
+        description="Dated, and kept in the shift history — the previous assignment is closed the day before this one starts, so the two never overlap."
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setShiftOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!shiftId || !shiftFrom || assignShift.isPending}
+              onClick={() => assignShift.mutate()}
+            >
+              {assignShift.isPending ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <Icon name="check" className="text-[18px]" />
+              )}
+              Save
+            </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-md">
+          {assignShift.isError && (
+            <Alert variant="error" title="Could not change the shift">
+              {assignShift.error instanceof ApiError
+                ? assignShift.error.message
+                : 'Please try again.'}
+            </Alert>
+          )}
+
+          <SelectField
+            label="Shift"
+            placeholder="Choose a shift"
+            value={shiftId}
+            onChange={(event) => setShiftId(event.target.value)}
+            options={(shifts ?? []).map((shift) => ({
+              value: shift.id,
+              label: `${shift.name} (${shift.startTime}–${shift.endTime})`,
+            }))}
+          />
+
+          <div>
+            <label htmlFor="shift-effective-from" className="field-label">
+              Effective from
+            </label>
+            <input
+              id="shift-effective-from"
+              type="date"
+              value={shiftFrom}
+              onChange={(event) => setShiftFrom(event.target.value)}
+              className="field-input"
+            />
+            <p className="mt-unit text-body-sm text-on-surface-variant">
+              Attendance before this date keeps being measured against the old shift, so
+              back-dating this re-reads days that have already been settled.
+            </p>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={resetOpen}
