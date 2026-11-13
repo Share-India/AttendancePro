@@ -369,7 +369,17 @@ const BreakMenu = ({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-56 animate-fade-in overflow-hidden rounded-md border border-outline-variant/60 bg-surface-container-lowest shadow-overlay"
+          /*
+            Left-aligned on a phone, right-aligned from sm up.
+            right-0 pins the menu's right edge to the trigger's, and the
+            trigger sits mid-card with "Punch Out" beside it — so a 224px menu
+            started about 40px off the left of a 393px screen and the labels
+            read "unch Break", "ea Break".
+            max-w also matters: on a narrow phone even a left-aligned 224px
+            menu can run off the other side, and clipping the right edge is
+            the same bug mirrored.
+          */
+          className="absolute left-0 z-20 mt-1 w-56 max-w-[calc(100vw-2rem)] animate-fade-in overflow-hidden rounded-md border border-outline-variant/60 bg-surface-container-lowest shadow-overlay sm:left-auto sm:right-0"
         >
           {options.map((option) => (
             <button
