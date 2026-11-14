@@ -1,15 +1,18 @@
 package com.company.attendance.service;
 
+import com.company.attendance.entity.CompanySetting;
 import com.company.attendance.entity.Employee;
 import com.company.attendance.entity.Holiday;
 import com.company.attendance.entity.WeeklyOff;
 import com.company.attendance.enums.DayType;
+import com.company.attendance.repository.CompanySettingRepository;
 import com.company.attendance.repository.HolidayRepository;
 import com.company.attendance.repository.WeeklyOffRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -28,6 +31,9 @@ import java.util.Optional;
 @Service
 public class CalendarService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(CalendarService.class);
+
     /** Most specific scope wins, same ordering as policy resolution. */
     private static final Map<String, Integer> SCOPE_SPECIFICITY = Map.of(
             "EMPLOYEE", 50,
@@ -38,10 +44,14 @@ public class CalendarService {
 
     private final HolidayRepository holidayRepository;
     private final WeeklyOffRepository weeklyOffRepository;
+    private final CompanySettingRepository companySettingRepository;
 
-    public CalendarService(HolidayRepository holidayRepository, WeeklyOffRepository weeklyOffRepository) {
+    public CalendarService(HolidayRepository holidayRepository,
+                           WeeklyOffRepository weeklyOffRepository,
+                           CompanySettingRepository companySettingRepository) {
         this.holidayRepository = holidayRepository;
         this.weeklyOffRepository = weeklyOffRepository;
+        this.companySettingRepository = companySettingRepository;
     }
 
     /**
@@ -102,6 +112,47 @@ public class CalendarService {
     @Transactional(readOnly = true)
     public List<Holiday> findHolidaysBetween(LocalDate from, LocalDate to) {
         return holidayRepository.findByHolidayDateBetweenAndActiveTrueOrderByHolidayDateAsc(from, to);
+    }
+
+
+    /**
+     * Whether attendance was being recorded on this date.
+     *
+     * <p>A working day with no punch is inferred ABSENT, which is correct once
+     * people are using the application and wrong before they are. Days before
+     * {@code attendance.tracking_start_date} are outside the system's reach:
+     * not absent, not counted in the attendance percentage, and consuming no
+     * grace. See V26.
+     *
+     * <p>No setting means the system has always been recording — the right
+     * answer for a fresh install and for every environment that never
+     * migrated from something else.
+     */
+    @Transactional(readOnly = true)
+    public boolean isTracked(LocalDate date) {
+        LocalDate start = trackingStartDate();
+        return start == null || !date.isBefore(start);
+    }
+
+    /** The configured start, or null when attendance has always been recorded. */
+    public LocalDate trackingStartDate() {
+        return companySettingRepository.findBySettingKey("attendance.tracking_start_date")
+                .map(CompanySetting::getSettingValue)
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> {
+                    try {
+                        return LocalDate.parse(value.trim());
+                    } catch (DateTimeParseException e) {
+                        // Treated as absent rather than thrown: a typo here
+                        // must not stop the calendar rendering, and falling
+                        // back to "always tracked" is the pre-existing
+                        // behaviour rather than a new one.
+                        log.warn("attendance.tracking_start_date is not a date: '{}'. "
+                                + "Treating attendance as always tracked.", value);
+                        return null;
+                    }
+                })
+                .orElse(null);
     }
 
     @Transactional(readOnly = true)

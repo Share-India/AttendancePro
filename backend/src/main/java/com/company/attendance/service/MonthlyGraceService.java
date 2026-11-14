@@ -50,11 +50,14 @@ public class MonthlyGraceService {
 
     private final AttendanceRepository attendanceRepository;
     private final CompanySettingRepository companySettingRepository;
+    private final CalendarService calendarService;
 
     public MonthlyGraceService(AttendanceRepository attendanceRepository,
-                               CompanySettingRepository companySettingRepository) {
+                               CompanySettingRepository companySettingRepository,
+                               CalendarService calendarService) {
         this.attendanceRepository = attendanceRepository;
         this.companySettingRepository = companySettingRepository;
+        this.calendarService = calendarService;
     }
 
     /**
@@ -93,8 +96,12 @@ public class MonthlyGraceService {
             return Allowance.none(rawLateMinutes);
         }
 
-        LocalDate monthStart = date.withDayOfMonth(1);
-        LocalDate monthEnd = monthStart.plusMonths(1).minusDays(1);
+        // The pool covers the month, but never reaches back past go-live.
+        // Grace recorded before the system was in use — a test punch, a trial
+        // run — would otherwise come out of the minutes people actually have
+        // from day one, spending the buffer before anybody had used it.
+        LocalDate monthStart = monthStartNotBeforeTracking(date);
+        LocalDate monthEnd = date.withDayOfMonth(1).plusMonths(1).minusDays(1);
 
         // Excluding this date is what makes re-settlement idempotent.
         Integer spentElsewhere = attendanceRepository
@@ -131,10 +138,23 @@ public class MonthlyGraceService {
     /** Minutes still available to this employee for the month containing {@code date}. */
     @Transactional(readOnly = true)
     public int remainingFor(Long employeeId, LocalDate date) {
-        LocalDate monthStart = date.withDayOfMonth(1);
+        LocalDate monthStart = monthStartNotBeforeTracking(date);
         Integer spent = attendanceRepository.sumGraceUsedInMonth(
-                employeeId, monthStart, monthStart.plusMonths(1).minusDays(1));
+                employeeId, monthStart, date.withDayOfMonth(1).plusMonths(1).minusDays(1));
         return Math.max(0, monthlyGraceMinutes() - (spent == null ? 0 : spent));
+    }
+
+    /**
+     * The first day of {@code date}'s month, or go-live if that is later.
+     *
+     * <p>In the month the system went live the pool runs from go-live to month
+     * end, not from the 1st — so nothing recorded before anybody was using it
+     * can eat into the allowance.
+     */
+    private LocalDate monthStartNotBeforeTracking(LocalDate date) {
+        LocalDate monthStart = date.withDayOfMonth(1);
+        LocalDate tracking = calendarService.trackingStartDate();
+        return tracking != null && tracking.isAfter(monthStart) ? tracking : monthStart;
     }
 
     /**

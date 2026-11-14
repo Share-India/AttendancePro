@@ -164,6 +164,9 @@ export const STATUS_TONE: Record<string, 'success' | 'warning' | 'error' | 'info
   WEEKLY_OFF: 'neutral',
   UPCOMING: 'neutral',
   NOT_PUNCHED_IN: 'neutral',
+  // A day before this system started recording. Neutral, never error: nobody
+  // missed a punch on a day the application did not exist for them.
+  NOT_TRACKED: 'neutral',
 };
 
 export const humaniseStatus = (status: string): string =>

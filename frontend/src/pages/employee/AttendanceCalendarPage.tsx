@@ -30,6 +30,9 @@ const CELL_STYLES: Record<string, string> = {
   HOLIDAY: 'bg-surface-container-high text-on-surface-variant border-outline-variant/50',
   WEEKLY_OFF: 'bg-surface-container text-on-surface-variant border-outline-variant/40',
   UPCOMING: 'bg-surface-container-lowest text-outline border-outline-variant/30 border-dashed',
+  // Before this system started recording. Styled like a future day on
+  // purpose: in both cases there is no punch and nothing was missed.
+  NOT_TRACKED: 'bg-surface-container-lowest text-outline border-outline-variant/30 border-dashed',
 };
 
 const LEGEND = [

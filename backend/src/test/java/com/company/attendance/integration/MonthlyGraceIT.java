@@ -72,6 +72,13 @@ class MonthlyGraceIT {
         employee = employeeRepository.save(employee);
 
         setMonthlyGrace("30");
+
+        // company_settings survives DatabaseCleaner, so a test that sets a
+        // go-live date would otherwise leak it into the next one and make
+        // dates before it invisible. Cleared here so each test starts from
+        // "always tracked" unless it says otherwise.
+        companySettingRepository.findBySettingKey("attendance.tracking_start_date")
+                .ifPresent(companySettingRepository::delete);
     }
 
     private void setMonthlyGrace(String minutes) {
@@ -212,6 +219,58 @@ class MonthlyGraceIT {
         assertThat(allowance.graceUsedMinutes()).isZero();
         assertThat(allowance.lateMinutes()).isZero();
         assertThat(grace.remainingFor(employee.getId(), THIRD)).isEqualTo(30);
+    }
+
+// -----------------------------------------------------------------
+    // The launch month
+    // -----------------------------------------------------------------
+
+    private void setTrackingStart(String date) {
+        CompanySetting setting = companySettingRepository
+                .findBySettingKey("attendance.tracking_start_date")
+                .orElseGet(CompanySetting::new);
+        setting.setSettingKey("attendance.tracking_start_date");
+        setting.setSettingValue(date);
+        setting.setValueType("STRING");
+        setting.setCategory("ATTENDANCE");
+        companySettingRepository.save(setting);
+    }
+
+    @Test
+    @DisplayName("grace spent before go-live does not come out of the month's allowance")
+    void graceBeforeGoLiveIsIgnored() {
+        // The launch problem. A test punch on the 3rd must not leave people
+        // short on the 16th, when they first actually use the system.
+        setTrackingStart("2026-11-16");
+        recordDay(THIRD, 20, 0);
+
+        assertThat(grace.remainingFor(employee.getId(), LocalDate.of(2026, 11, 16)))
+                .isEqualTo(30);
+
+        var allowance = grace.apply(employee.getId(), LocalDate.of(2026, 11, 16), 25);
+        assertThat(allowance.graceUsedMinutes()).isEqualTo(25);
+        assertThat(allowance.lateMinutes()).isZero();
+    }
+
+    @Test
+    @DisplayName("grace spent after go-live still counts against the same month")
+    void graceAfterGoLiveCounts() {
+        setTrackingStart("2026-11-16");
+        recordDay(LocalDate.of(2026, 11, 17), 25, 0);
+
+        var allowance = grace.apply(employee.getId(), LocalDate.of(2026, 11, 18), 12);
+
+        assertThat(allowance.graceUsedMinutes()).isEqualTo(5);
+        assertThat(allowance.lateMinutes()).isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("a later month is unaffected by the go-live date")
+    void monthsAfterLaunchAreNormal() {
+        setTrackingStart("2026-11-16");
+        recordDay(NEXT_MONTH, 30, 0);
+
+        assertThat(grace.remainingFor(employee.getId(), NEXT_MONTH.plusDays(5))).isZero();
     }
 
     @Test

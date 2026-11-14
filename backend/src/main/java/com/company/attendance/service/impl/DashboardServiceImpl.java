@@ -420,6 +420,13 @@ public class DashboardServiceImpl implements DashboardService {
         // A working day with nobody home. Whether that is a problem depends on
         // whether the day is over — calling someone absent at 09:05 turns a
         // clock reading into an accusation.
+        // Before go-live there was no punch to miss, so the day is reported
+        // as nothing-expected rather than absent. NOT_YET_IN rather than a new
+        // enum value: it already means "no attendance, not a failure", and the
+        // counts that matter treat it the same way.
+        if (!calendarService.isTracked(date)) {
+            return DayState.NOT_YET_IN;
+        }
         return hasShiftEnded(employee, date, now, shift) ? DayState.ABSENT : DayState.NOT_YET_IN;
     }
 

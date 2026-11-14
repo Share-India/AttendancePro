@@ -291,6 +291,11 @@ public class AttendanceServiceImpl implements AttendanceService {
             // A future working day is simply not yet known; calling it absent
             // would light the calendar up with failures that have not happened.
             status = "UPCOMING";
+        } else if (!calendarService.isTracked(date)) {
+            // Same reasoning pointed the other way: before go-live the
+            // application did not exist for this person, so there was no
+            // punch to miss.
+            status = "NOT_TRACKED";
         } else {
             status = AttendanceStatus.ABSENT.name();
         }
@@ -353,13 +358,17 @@ public class AttendanceServiceImpl implements AttendanceService {
                         // Open or non-working states contribute no count.
                     }
                 }
-            } else if (!isHoliday && !isWeeklyOff && !date.isAfter(today)) {
+            } else if (!isHoliday && !isWeeklyOff && !date.isAfter(today)
+                    && calendarService.isTracked(date)) {
                 absent++;
             }
 
             // Percentage is measured against days that have actually passed, so
-            // early in a month it is not dragged down by days yet to come.
-            if (!isHoliday && !isWeeklyOff && !date.isAfter(today)) {
+            // early in a month it is not dragged down by days yet to come —
+            // and not by days before this system was recording either, which
+            // would otherwise put every employee near zero in the first month.
+            if (!isHoliday && !isWeeklyOff && !date.isAfter(today)
+                    && calendarService.isTracked(date)) {
                 workingDaysElapsed++;
             }
         }
