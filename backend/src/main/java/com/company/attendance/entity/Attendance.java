@@ -128,6 +128,17 @@ public class Attendance extends BaseEntity {
     @Column(name = "late_minutes", nullable = false)
     private int lateMinutes;
 
+    /**
+     * What this day drew from the month's grace allowance.
+     *
+     * <p>Stored rather than derived: the month's running total is a SUM over
+     * these, and recomputing every earlier day on each punch would turn one
+     * settlement into twenty-two. It is also the audit trail for why a day
+     * with a late arrival shows no late minutes.
+     */
+    @Column(name = "grace_used_minutes", nullable = false)
+    private int graceUsedMinutes;
+
     @Column(name = "early_exit_minutes", nullable = false)
     private int earlyExitMinutes;
 

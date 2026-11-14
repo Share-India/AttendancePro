@@ -35,6 +35,7 @@ import com.company.attendance.repository.RegularizationApprovalRepository;
 import com.company.attendance.security.AccessScopeResolver;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.AttendanceCalculationService;
+import com.company.attendance.service.MonthlyGraceService;
 import com.company.attendance.service.CalendarService;
 import com.company.attendance.service.PolicyResolutionService;
 import com.company.attendance.service.RegularizationService;
@@ -86,6 +87,7 @@ public class RegularizationServiceImpl implements RegularizationService {
     private final PolicyResolutionService policyResolutionService;
     private final CalendarService calendarService;
     private final AttendanceCalculationService calculationService;
+    private final MonthlyGraceService monthlyGraceService;
     private final RequestApproverResolver approverResolver;
     private final AccessScopeResolver accessScopeResolver;
     private final AuditLogService auditLogService;
@@ -102,6 +104,7 @@ public class RegularizationServiceImpl implements RegularizationService {
                                      PolicyResolutionService policyResolutionService,
                                      CalendarService calendarService,
                                      AttendanceCalculationService calculationService,
+                               MonthlyGraceService monthlyGraceService,
                                      RequestApproverResolver approverResolver,
                                      AccessScopeResolver accessScopeResolver,
                                      AuditLogService auditLogService,
@@ -117,6 +120,7 @@ public class RegularizationServiceImpl implements RegularizationService {
         this.policyResolutionService = policyResolutionService;
         this.calendarService = calendarService;
         this.calculationService = calculationService;
+        this.monthlyGraceService = monthlyGraceService;
         this.approverResolver = approverResolver;
         this.accessScopeResolver = accessScopeResolver;
         this.auditLogService = auditLogService;
@@ -272,13 +276,13 @@ public class RegularizationServiceImpl implements RegularizationService {
 
             attendance.setWorkingMinutes(calculation.workingMinutes());
             attendance.setBreakMinutes(calculation.breakMinutes());
-            attendance.setLateMinutes(calculation.lateMinutes());
+            monthlyGraceService.applyTo(attendance, calculation.lateMinutes());
             attendance.setEarlyExitMinutes(calculation.earlyExitMinutes());
             attendance.setOvertimeMinutes(calculation.overtimeMinutes());
             attendance.setAttendanceStatus(calculation.status());
         } else if (punchIn != null) {
             // Half a correction: the day is open again rather than settled.
-            attendance.setLateMinutes(
+            monthlyGraceService.applyTo(attendance,
                     calculationService.calculateLateMinutes(punchIn, date, zone, shift, policy));
             attendance.setAttendanceStatus(com.company.attendance.enums.AttendanceStatus.MISSING_PUNCH_OUT);
         }

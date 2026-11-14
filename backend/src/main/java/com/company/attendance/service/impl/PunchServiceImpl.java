@@ -31,6 +31,7 @@ import com.company.attendance.repository.LeaveRequestRepository;
 import com.company.attendance.repository.OvertimeRecordRepository;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.AttendanceCalculationService;
+import com.company.attendance.service.MonthlyGraceService;
 import com.company.attendance.service.CalendarService;
 import com.company.attendance.service.GeofenceService;
 import com.company.attendance.service.PolicyResolutionService;
@@ -83,6 +84,7 @@ public class PunchServiceImpl implements PunchService {
     private final GeofenceService geofenceService;
     private final SuspiciousPunchDetector suspiciousPunchDetector;
     private final AttendanceCalculationService calculationService;
+    private final MonthlyGraceService monthlyGraceService;
     private final WorkFromHomeService workFromHomeService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
@@ -100,6 +102,7 @@ public class PunchServiceImpl implements PunchService {
                             GeofenceService geofenceService,
                             SuspiciousPunchDetector suspiciousPunchDetector,
                             AttendanceCalculationService calculationService,
+                               MonthlyGraceService monthlyGraceService,
                             WorkFromHomeService workFromHomeService,
                             AuditLogService auditLogService,
                             ObjectMapper objectMapper) {
@@ -116,6 +119,7 @@ public class PunchServiceImpl implements PunchService {
         this.geofenceService = geofenceService;
         this.suspiciousPunchDetector = suspiciousPunchDetector;
         this.calculationService = calculationService;
+        this.monthlyGraceService = monthlyGraceService;
         this.workFromHomeService = workFromHomeService;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
@@ -193,7 +197,7 @@ public class PunchServiceImpl implements PunchService {
         attendance.setPunchInDistanceMeters(geofence.distanceMeters());
         attendance.setPunchInLocation(geofence.locationLabel());
 
-        attendance.setLateMinutes(
+        monthlyGraceService.applyTo(attendance,
                 calculationService.calculateLateMinutes(now, businessDate, zone, shift, attendancePolicy));
 
         applyFlags(attendance, flags);

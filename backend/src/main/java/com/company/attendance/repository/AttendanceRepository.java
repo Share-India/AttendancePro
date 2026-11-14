@@ -83,4 +83,31 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long>, J
 
     @Query("SELECT a FROM Attendance a WHERE a.attendanceDate = :date AND a.attendanceStatus IN ('PUNCHED_IN','ON_BREAK')")
     List<Attendance> findOpenDays(@Param("date") LocalDate date);
+
+    /**
+     * Grace spent in a month, ignoring one date.
+     *
+     * <p>The exclusion is what makes re-settling a day idempotent: without it
+     * a second settlement of the same day would see its own earlier spend and
+     * charge the month twice.
+     */
+    @Query("""
+           SELECT COALESCE(SUM(a.graceUsedMinutes), 0) FROM Attendance a
+            WHERE a.employee.id = :employeeId
+              AND a.attendanceDate BETWEEN :from AND :to
+              AND a.attendanceDate <> :excluding
+           """)
+    Integer sumGraceUsedInMonthExcluding(@Param("employeeId") Long employeeId,
+                                         @Param("from") LocalDate from,
+                                         @Param("to") LocalDate to,
+                                         @Param("excluding") LocalDate excluding);
+
+    @Query("""
+           SELECT COALESCE(SUM(a.graceUsedMinutes), 0) FROM Attendance a
+            WHERE a.employee.id = :employeeId
+              AND a.attendanceDate BETWEEN :from AND :to
+           """)
+    Integer sumGraceUsedInMonth(@Param("employeeId") Long employeeId,
+                                @Param("from") LocalDate from,
+                                @Param("to") LocalDate to);
 }
