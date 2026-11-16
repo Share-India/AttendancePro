@@ -7,6 +7,7 @@ import com.company.attendance.entity.Attendance;
 import com.company.attendance.entity.AttendanceRegularization;
 import com.company.attendance.entity.Employee;
 import com.company.attendance.entity.Exam;
+import com.company.attendance.entity.LeaveBalance;
 import com.company.attendance.entity.ExamAttempt;
 import com.company.attendance.entity.ExamParticipant;
 import com.company.attendance.entity.ExamQuestion;
@@ -14,6 +15,7 @@ import com.company.attendance.entity.MeetingParticipant;
 import com.company.attendance.entity.LeaveRequest;
 import com.company.attendance.entity.LeaveRequestDay;
 import com.company.attendance.enums.AccessScope;
+import com.company.attendance.enums.AttendanceStatus;
 import com.company.attendance.enums.DayType;
 import com.company.attendance.enums.ErrorCode;
 import com.company.attendance.enums.ExamParticipantKind;
@@ -26,12 +28,15 @@ import com.company.attendance.repository.ExamAnswerRepository;
 import com.company.attendance.repository.ExamAttemptRepository;
 import com.company.attendance.repository.ExamParticipantRepository;
 import com.company.attendance.repository.ExamQuestionRepository;
+import com.company.attendance.repository.LeaveBalanceRepository;
 import com.company.attendance.repository.LeaveRequestDayRepository;
 import com.company.attendance.repository.LeaveRequestRepository;
 import com.company.attendance.repository.MeetingParticipantRepository;
 import com.company.attendance.security.AccessScopeResolver;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.CalendarService;
+import com.company.attendance.service.LeaveBalanceService;
+import com.company.attendance.service.PaidLeaveAccrualService;
 import com.company.attendance.service.ReportService;
 import com.company.attendance.service.exam.ExamSets;
 import com.company.attendance.util.DateTimeUtils;
@@ -39,15 +44,19 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -93,7 +102,10 @@ public class ReportServiceImpl implements ReportService {
     private final ExamAttemptRepository examAttemptRepository;
     private final ExamAnswerRepository examAnswerRepository;
     private final ExamQuestionRepository examQuestionRepository;
+    private final LeaveBalanceRepository leaveBalanceRepository;
     private final CalendarService calendarService;
+    private final LeaveBalanceService leaveBalanceService;
+    private final PaidLeaveAccrualService paidLeaveAccrualService;
     private final AccessScopeResolver accessScopeResolver;
 
     public ReportServiceImpl(EmployeeRepository employeeRepository,
@@ -106,7 +118,10 @@ public class ReportServiceImpl implements ReportService {
                              ExamAttemptRepository examAttemptRepository,
                              ExamAnswerRepository examAnswerRepository,
                              ExamQuestionRepository examQuestionRepository,
+                             LeaveBalanceRepository leaveBalanceRepository,
                              CalendarService calendarService,
+                             LeaveBalanceService leaveBalanceService,
+                             PaidLeaveAccrualService paidLeaveAccrualService,
                              AccessScopeResolver accessScopeResolver) {
         this.employeeRepository = employeeRepository;
         this.attendanceRepository = attendanceRepository;
@@ -118,7 +133,10 @@ public class ReportServiceImpl implements ReportService {
         this.examAttemptRepository = examAttemptRepository;
         this.examAnswerRepository = examAnswerRepository;
         this.examQuestionRepository = examQuestionRepository;
+        this.leaveBalanceRepository = leaveBalanceRepository;
         this.calendarService = calendarService;
+        this.leaveBalanceService = leaveBalanceService;
+        this.paidLeaveAccrualService = paidLeaveAccrualService;
         this.accessScopeResolver = accessScopeResolver;
     }
 
@@ -196,6 +214,7 @@ public class ReportServiceImpl implements ReportService {
         return switch (type) {
             case DAILY_ATTENDANCE, EMPLOYEE_ATTENDANCE -> dailyAttendance(scope, population, from, to);
             case MONTHLY_ATTENDANCE -> monthlySummary(scope, population, from, to);
+            case SALARY_ATTENDANCE -> salaryAttendance(scope, population, from, to);
             case LATE_ARRIVALS -> exceptions(scope, population, from, to, true);
             case EARLY_EXITS -> exceptions(scope, population, from, to, false);
             case ABSENTEES -> absentees(scope, population, from, to);
@@ -342,6 +361,452 @@ public class ReportServiceImpl implements ReportService {
         }
 
         return new Built(scope, from, to, columns, rows, Map.of("rows", rows.size()));
+    }
+
+    // -----------------------------------------------------------------
+    // The salary sheet
+    //
+    // This is the one report that is a transcription rather than a
+    // summary: payroll already keeps this sheet by hand, column for
+    // column, and the point of producing it is that the two can be laid
+    // side by side and compared line by line. So the layout follows
+    // theirs — S.No, name, one column per day, then the counts — and the
+    // day cells use their words, not the enum names.
+    //
+    // The counts are not independent of each other. They satisfy, for
+    // every row:
+    //
+    //     Total working days      = days counted - holidays & weekly offs
+    //     Total days worked       = Present + Late
+    //     Post leave adjustment   = days worked + leaves taken
+    //     Salary payable Days     = post leave adjustment + offs
+    //     Carry forward           = opening + month's accrual - taken
+    //
+    // Verified against three rows of payroll's own October sheet before
+    // any of it was written, which is why an Absent day is charged as a
+    // leave day taken: that is what makes their payable figure come to
+    // the full month rather than one short.
+    // -----------------------------------------------------------------
+
+    /** The leave type a salary sheet is denominated in. */
+    private static final String PAID_LEAVE_CODE = "PL";
+
+    private static final BigDecimal HALF = new BigDecimal("0.5");
+
+    /**
+     * What one day of the sheet says, and what it counts as.
+     *
+     * <p>The labels are payroll's own vocabulary. Nothing downstream
+     * parses them back — they are read by a person comparing two sheets.
+     */
+    private enum DayCell {
+
+        /** Not employed yet, or already left. */
+        BLANK(""),
+
+        /** A day still to come. Blank like the paper sheet, and counted nowhere. */
+        UPCOMING(""),
+
+        /** Before this system was recording. Not absent; see V26. */
+        NOT_TRACKED("Not tracked"),
+
+        PRESENT("Present"),
+        LATE("Late"),
+        HALF_DAY("Half day"),
+        LEAVE("Leave"),
+        ABSENT("Absent"),
+        HOLIDAY("Holiday"),
+        SUNDAY("Sunday"),
+        SATURDAY_OFF("Sat off"),
+        WEEKLY_OFF("Weekly off");
+
+        private final String label;
+
+        DayCell(String label) {
+            this.label = label;
+        }
+
+        String label() {
+            return label;
+        }
+
+        /** Counted under "Holidays & Weekly offs", and never a working day. */
+        boolean isOff() {
+            return this == HOLIDAY || this == SUNDAY || this == SATURDAY_OFF || this == WEEKLY_OFF;
+        }
+
+        /**
+         * Whether the sheet counts this day at all.
+         *
+         * <p>A day that is not counted contributes to nothing — not to the
+         * working days, and not to the holidays and offs either. Counting an
+         * untracked Sunday as an off while leaving the untracked Mondays out
+         * breaks the identity the whole sheet rests on, and leaves a payable
+         * figure that reconciles with neither the month nor the part of it
+         * the system actually saw.
+         */
+        boolean isCounted() {
+            return this != BLANK && this != UPCOMING && this != NOT_TRACKED;
+        }
+
+        /** Days credited to "Total days worked". A late arrival still worked. */
+        BigDecimal worked() {
+            if (this == PRESENT || this == LATE) {
+                return BigDecimal.ONE;
+            }
+            return this == HALF_DAY ? HALF : BigDecimal.ZERO;
+        }
+    }
+
+    private Built salaryAttendance(AccessScope scope, List<Employee> population,
+                                   LocalDate from, LocalDate to) {
+
+        YearMonth month = YearMonth.from(from);
+        if (!month.equals(YearMonth.from(to))) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "A salary sheet covers one calendar month. Pick a range inside a "
+                            + "single month — the whole month is produced either way.");
+        }
+
+        LocalDate monthStart = month.atDay(1);
+        LocalDate monthEnd = month.atEndOfMonth();
+        LocalDate today = LocalDate.now();
+
+        short leaveYear = leaveBalanceService.resolveLeaveYear(monthStart);
+        LocalDate yearStart = leaveBalanceService.leaveYearStart(leaveYear);
+        LocalDate accrualStart = leaveBalanceService.accrualStartDate();
+
+        // The sheet's opening balance is the closing balance of every month
+        // before it in the leave year, so those months have to be replayed —
+        // absence is inferred, never stored, and cannot be looked up.
+        LocalDate historyFrom = yearStart.isBefore(monthStart) ? yearStart : monthStart;
+
+        List<ReportColumn> columns = salaryColumns(month);
+
+        Map<LocalDate, Map<Long, DayType>> dayTypes =
+                calendarService.resolveDayTypes(population, historyFrom, monthEnd);
+
+        Map<Long, Map<LocalDate, Attendance>> attendanceByEmployee =
+                attendanceInRange(population, historyFrom, monthEnd).stream()
+                        .collect(Collectors.groupingBy(a -> a.getEmployee().getId(),
+                                Collectors.toMap(Attendance::getAttendanceDate,
+                                        Function.identity(), (first, second) -> first)));
+
+        // Present with a zero value still means "on leave": a day inside a
+        // leave span that falls on a holiday is shown as the holiday and
+        // charged nothing, which is what makes the sandwich rule visible
+        // here rather than silently generous.
+        Map<Long, Map<LocalDate, BigDecimal>> leaveByEmployee = new HashMap<>();
+        Set<Long> ids = idsOf(population);
+        if (!ids.isEmpty()) {
+            for (LeaveRequestDay day : leaveRequestDayRepository
+                    .findApprovedForEmployeesBetween(ids, historyFrom, monthEnd)) {
+                leaveByEmployee
+                        .computeIfAbsent(day.getEmployeeId(), key -> new HashMap<>())
+                        .merge(day.getLeaveDate(),
+                                day.isDeductible() ? day.getDayPortion().days() : BigDecimal.ZERO,
+                                BigDecimal::add);
+            }
+        }
+
+        Map<Long, LeaveBalance> ledger = ids.isEmpty() ? Map.of()
+                : leaveBalanceRepository
+                        .findForEmployeesAndTypeAndYear(ids, PAID_LEAVE_CODE, leaveYear).stream()
+                        .collect(Collectors.toMap(balance -> balance.getEmployee().getId(),
+                                Function.identity(), (first, second) -> first));
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        int serial = 0;
+
+        for (Employee employee : population) {
+            Map<LocalDate, Attendance> days =
+                    attendanceByEmployee.getOrDefault(employee.getId(), Map.of());
+            Map<LocalDate, BigDecimal> leaves =
+                    leaveByEmployee.getOrDefault(employee.getId(), Map.of());
+
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("sno", ++serial);
+            row.put("employeeName", employee.getFullName());
+
+            BigDecimal worked = BigDecimal.ZERO;
+            BigDecimal taken = BigDecimal.ZERO;
+            int counted = 0;
+            int offs = 0;
+            int untracked = 0;
+            int upcoming = 0;
+            int absences = 0;
+
+            for (int day = 1; day <= month.lengthOfMonth(); day++) {
+                LocalDate date = month.atDay(day);
+                DayCell cell = classify(employee, date,
+                        dayTypes.getOrDefault(date, Map.of())
+                                .getOrDefault(employee.getId(), DayType.WORKING),
+                        days.get(date), leaves.containsKey(date), today);
+
+                row.put(dayKey(day), cell.label());
+
+                if (!cell.isCounted()) {
+                    if (cell == DayCell.NOT_TRACKED) {
+                        untracked++;
+                    } else if (cell == DayCell.UPCOMING) {
+                        upcoming++;
+                    }
+                    continue;
+                }
+                counted++;
+                if (cell.isOff()) {
+                    offs++;
+                    continue;
+                }
+
+                // One counted working day is worth one day, split between what
+                // was worked and what was charged to the balance. Charging
+                // first and crediting the remainder keeps that true however
+                // the day is made up: a half day of leave with a punch for the
+                // other half charges the half day and credits the half worked,
+                // instead of crediting a whole day and charging nothing.
+                BigDecimal charged = cell == DayCell.ABSENT
+                        // Payroll charges an absence to the leave balance. That
+                        // is the only reason their payable figure comes to a
+                        // full month for somebody who missed a day.
+                        ? BigDecimal.ONE
+                        : leaves.getOrDefault(date, BigDecimal.ZERO).min(BigDecimal.ONE);
+
+                if (cell == DayCell.ABSENT) {
+                    absences++;
+                }
+
+                taken = taken.add(charged);
+                worked = worked.add(cell.worked()
+                        .min(BigDecimal.ONE.subtract(charged))
+                        .max(BigDecimal.ZERO));
+            }
+
+            BigDecimal opening = openingBalance(employee, ledger.get(employee.getId()),
+                    yearStart, monthStart, accrualStart, dayTypes, days, leaves, today);
+            BigDecimal accrued = paidLeaveAccrualService
+                    .accruedBy(employee, monthStart, monthEnd, accrualStart);
+
+            BigDecimal carried = opening.add(accrued).subtract(taken);
+            BigDecimal shortfall = carried.signum() < 0 ? carried.negate() : BigDecimal.ZERO;
+
+            row.put("openingBalance", strip(opening));
+            row.put("leavesTaken", strip(taken));
+            row.put("workingDays", counted - offs);
+            row.put("daysWorked", strip(worked));
+            row.put("postLeaveAdjustment", strip(worked.add(taken)));
+            row.put("holidaysAndOffs", offs);
+            row.put("payableDays", strip(worked.add(taken).add(BigDecimal.valueOf(offs))));
+            row.put("monthlyAccrual", strip(accrued));
+            row.put("carryForward", strip(carried.max(BigDecimal.ZERO)));
+            row.put("comments", comments(month, untracked, upcoming, absences, shortfall));
+
+            rows.add(row);
+        }
+
+        return new Built(scope, monthStart, monthEnd, columns, rows,
+                Map.of("rows", rows.size()));
+    }
+
+    private List<ReportColumn> salaryColumns(YearMonth month) {
+        String monthName = month.getMonth()
+                .getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        String monthAndYear = monthName + " " + month.getYear();
+        YearMonth next = month.plusMonths(1);
+        String nextMonthAndYear = next.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+                + " " + next.getYear();
+
+        List<ReportColumn> columns = new ArrayList<>();
+        columns.add(ReportColumn.number("sno", "S.No"));
+        columns.add(ReportColumn.text("employeeName", "Employee Name"));
+
+        for (int day = 1; day <= month.lengthOfMonth(); day++) {
+            columns.add(ReportColumn.text(dayKey(day), ordinal(day) + " " + monthName));
+        }
+
+        columns.add(ReportColumn.number("openingBalance",
+                "Balance leaves as on 1st " + monthAndYear));
+        columns.add(ReportColumn.number("leavesTaken", "Total Leaves Taken"));
+        columns.add(ReportColumn.number("workingDays", "Total working days"));
+        columns.add(ReportColumn.number("daysWorked", "Total days worked (Present days)"));
+        columns.add(ReportColumn.number("postLeaveAdjustment",
+                "Total working days post leave adjustment"));
+        columns.add(ReportColumn.number("holidaysAndOffs", "Holidays & Weekly offs"));
+        columns.add(ReportColumn.number("payableDays", "Salary payable Days"));
+        columns.add(ReportColumn.number("monthlyAccrual", "Paid leaves for the month"));
+        columns.add(ReportColumn.number("carryForward",
+                "Leaves to be carry forwarded " + nextMonthAndYear));
+        columns.add(ReportColumn.text("comments", "Comments"));
+
+        return columns;
+    }
+
+    private static String dayKey(int day) {
+        return "d" + day;
+    }
+
+    private static String ordinal(int day) {
+        String suffix = switch (day % 100) {
+            case 11, 12, 13 -> "th";
+            default -> switch (day % 10) {
+                case 1 -> "st";
+                case 2 -> "nd";
+                case 3 -> "rd";
+                default -> "th";
+            };
+        };
+        return day + suffix;
+    }
+
+    /**
+     * What one day of the sheet reads as.
+     *
+     * <p>The precedence deliberately matches the attendance calendar's, so
+     * the salary sheet and the screen an employee can see never disagree
+     * about a date. A recorded punch outranks the calendar — somebody who
+     * came in on a Sunday worked that Sunday — and a holiday outranks a
+     * weekly off and a leave day both.
+     */
+    private DayCell classify(Employee employee, LocalDate date, DayType dayType,
+                             Attendance attendance, boolean onLeave, LocalDate today) {
+
+        if (!wasEmployedOn(employee, date)) {
+            return DayCell.BLANK;
+        }
+
+        if (attendance != null && attendance.getPunchInTime() != null) {
+            if (attendance.getAttendanceStatus() == AttendanceStatus.HALF_DAY) {
+                return DayCell.HALF_DAY;
+            }
+            return attendance.getLateMinutes() > 0 ? DayCell.LATE : DayCell.PRESENT;
+        }
+
+        // Asked before the calendar, not after. Whether a day is on the
+        // sheet at all is settled first; only then does what kind of day it
+        // was matter.
+        if (date.isAfter(today)) {
+            return DayCell.UPCOMING;
+        }
+        if (!calendarService.isTracked(date)) {
+            return DayCell.NOT_TRACKED;
+        }
+
+        if (dayType == DayType.HOLIDAY) {
+            return DayCell.HOLIDAY;
+        }
+        if (dayType == DayType.WEEKLY_OFF) {
+            return switch (date.getDayOfWeek()) {
+                case SUNDAY -> DayCell.SUNDAY;
+                case SATURDAY -> DayCell.SATURDAY_OFF;
+                default -> DayCell.WEEKLY_OFF;
+            };
+        }
+        if (onLeave) {
+            return DayCell.LEAVE;
+        }
+        return DayCell.ABSENT;
+    }
+
+    /**
+     * The balance on the first of the month.
+     *
+     * <p>Not a stored figure. The ledger holds what was carried into the
+     * leave year and any audited adjustment; everything since is the months
+     * between, replayed — accrual earned, leave taken, absences charged. The
+     * alternative is reading {@code available_days} off the ledger, which is
+     * right to the day rather than to the first of the month and does not
+     * charge absences at all, so it would disagree with the carry-forward
+     * column of the previous sheet. Two columns that are supposed to be the
+     * same number must be computed the same way.
+     *
+     * <p>For the first month the system owns the ledger this reduces to the
+     * carried-in figure alone: nothing accrues before
+     * {@code leave.accrual_start_date} and no earlier day was tracked.
+     */
+    private BigDecimal openingBalance(Employee employee, LeaveBalance balance,
+                                      LocalDate yearStart, LocalDate monthStart,
+                                      LocalDate accrualStart,
+                                      Map<LocalDate, Map<Long, DayType>> dayTypes,
+                                      Map<LocalDate, Attendance> days,
+                                      Map<LocalDate, BigDecimal> leaves,
+                                      LocalDate today) {
+
+        BigDecimal opening = balance == null ? BigDecimal.ZERO
+                : balance.getOpeningBalance()
+                        .add(balance.getCarriedForwardDays())
+                        .add(balance.getAdjustedDays());
+
+        if (!yearStart.isBefore(monthStart)) {
+            return opening;
+        }
+
+        LocalDate priorEnd = monthStart.minusDays(1);
+        opening = opening.add(paidLeaveAccrualService
+                .accruedBy(employee, yearStart, priorEnd, accrualStart));
+
+        for (LocalDate date = yearStart; !date.isAfter(priorEnd); date = date.plusDays(1)) {
+            DayCell cell = classify(employee, date,
+                    dayTypes.getOrDefault(date, Map.of())
+                            .getOrDefault(employee.getId(), DayType.WORKING),
+                    days.get(date), leaves.containsKey(date), today);
+
+            if (cell == DayCell.LEAVE || cell == DayCell.HALF_DAY) {
+                opening = opening.subtract(leaves.getOrDefault(date, BigDecimal.ZERO));
+            } else if (cell == DayCell.ABSENT) {
+                opening = opening.subtract(BigDecimal.ONE);
+            }
+        }
+
+        return opening.max(BigDecimal.ZERO);
+    }
+
+    /**
+     * The one column a person writes in, filled in for them where the
+     * figures need explaining.
+     *
+     * <p>A month the system joined part-way through is the case that matters:
+     * without a line saying so, a payable figure of fifteen in a thirty-day
+     * month looks like a bug rather than a go-live date.
+     */
+    private String comments(YearMonth month, int untracked, int upcoming,
+                            int absences, BigDecimal shortfall) {
+        List<String> notes = new ArrayList<>();
+
+        if (untracked > 0) {
+            // Named only when the go-live date is inside this month. Running a
+            // sheet for a month entirely before go-live would otherwise print
+            // the right day against the wrong month's name.
+            LocalDate start = calendarService.trackingStartDate();
+            boolean startIsInThisMonth = start != null && YearMonth.from(start).equals(month);
+
+            notes.add(untracked + " day" + (untracked == 1 ? "" : "s")
+                    + " before this system began recording"
+                    + (startIsInThisMonth
+                            ? " on " + ordinal(start.getDayOfMonth()) + " "
+                                    + month.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+                            : "")
+                    + ". The figures cover the rest of the month only.");
+        }
+        if (upcoming > 0) {
+            notes.add(upcoming + " day" + (upcoming == 1 ? "" : "s")
+                    + " of the month still to come. Run this again once the month has closed.");
+        }
+        if (absences > 0) {
+            notes.add(absences == 1 ? "Absent" : absences + " days absent");
+        }
+        if (shortfall.signum() > 0) {
+            notes.add(strip(shortfall) + " day"
+                    + (BigDecimal.ONE.compareTo(shortfall) == 0 ? "" : "s")
+                    + " beyond the leave balance — loss of pay.");
+        }
+
+        return String.join(" ", notes);
+    }
+
+    /** 2.0 reads as 2, 2.50 as 2.5. A sheet of trailing zeroes is harder to check. */
+    private static Object strip(BigDecimal value) {
+        BigDecimal stripped = value.stripTrailingZeros();
+        return stripped.scale() <= 0 ? stripped.longValueExact() : stripped;
     }
 
     private Built exceptions(AccessScope scope, List<Employee> population,

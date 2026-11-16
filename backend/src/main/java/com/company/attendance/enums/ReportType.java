@@ -35,7 +35,11 @@ public enum ReportType {
             "One row per person: exams assigned, sat, passed and missed."),
     EXAM_QUESTION_ANALYSIS("Exam Question Analysis",
             "One row per question: how many were asked it, how many got it right, "
-                    + "and the wrong answer most of them gave.");
+                    + "and the wrong answer most of them gave."),
+
+    SALARY_ATTENDANCE("Salary Attendance",
+            "The month-by-day sheet payroll works from: one column per day, then "
+                    + "the counts a salary is calculated from.");
 
     private final String title;
     private final String description;

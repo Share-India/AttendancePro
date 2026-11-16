@@ -18,7 +18,10 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Decides what kind of day a date is for a given employee.
@@ -98,6 +101,55 @@ public class CalendarService {
                     .max(Comparator.comparingInt(rule -> specificity(rule.getScopeType())))
                     .isPresent();
             result.put(employee.getId(), weeklyOff ? DayType.WEEKLY_OFF : DayType.WORKING);
+        }
+        return result;
+    }
+
+    /**
+     * The same decision for many employees across a whole range of dates.
+     *
+     * <p>Two queries for the entire range, not two per day. The per-day call
+     * above is already the fix for an N+1 across employees; this is the fix
+     * for the same shape across dates, which a report covering a year would
+     * otherwise hit six hundred times.
+     *
+     * <p>Rules are read once and applied in memory, by the same specificity
+     * ordering as everywhere else — a salary sheet and a punch screen
+     * disagreeing about whether a Saturday was a working day is exactly the
+     * bug this shares code to avoid.
+     *
+     * @return day type per date per employee id; every date in the range is
+     *         present, and every employee appears under each date
+     */
+    @Transactional(readOnly = true)
+    public Map<LocalDate, Map<Long, DayType>> resolveDayTypes(Collection<Employee> employees,
+                                                              LocalDate from, LocalDate to) {
+        Set<LocalDate> holidays = holidayRepository
+                .findByHolidayDateBetweenAndActiveTrueOrderByHolidayDateAsc(from, to).stream()
+                .map(Holiday::getHolidayDate)
+                .collect(Collectors.toSet());
+
+        List<WeeklyOff> rules = weeklyOffRepository.findAllActive();
+
+        Map<LocalDate, Map<Long, DayType>> result = new LinkedHashMap<>();
+        for (LocalDate cursor = from; !cursor.isAfter(to); cursor = cursor.plusDays(1)) {
+            final LocalDate date = cursor;
+            Map<Long, DayType> forDate = new HashMap<>();
+            boolean isHoliday = holidays.contains(date);
+
+            List<WeeklyOff> applicable = isHoliday ? List.of()
+                    : rules.stream().filter(rule -> rule.appliesTo(date)).toList();
+
+            for (Employee employee : employees) {
+                if (isHoliday) {
+                    forDate.put(employee.getId(), DayType.HOLIDAY);
+                    continue;
+                }
+                boolean weeklyOff = applicable.stream()
+                        .anyMatch(rule -> matchesScope(rule, employee));
+                forDate.put(employee.getId(), weeklyOff ? DayType.WEEKLY_OFF : DayType.WORKING);
+            }
+            result.put(date, forDate);
         }
         return result;
     }

@@ -33,4 +33,26 @@ public interface LeaveBalanceRepository extends JpaRepository<LeaveBalance, Long
 
     @Query("SELECT b FROM LeaveBalance b JOIN FETCH b.leaveType t WHERE b.employee.id = :employeeId AND b.leaveYear = :year AND t.active = true ORDER BY t.displayOrder")
     List<LeaveBalance> findForEmployeeAndYear(@Param("employeeId") Long employeeId, @Param("year") short year);
+
+    /**
+     * Every ledger row of one type for a whole population, in one query.
+     *
+     * <p>A payroll sheet needs the opening balance of forty people at once.
+     * Asking per person is the N+1 that makes a monthly report take a minute,
+     * and a report nobody waits for is a report nobody uses.
+     *
+     * <p>People with no row yet are simply absent from the result — reading a
+     * balance must not create one, which is what {@code getOrCreate} is for
+     * and why it cannot be called from a read-only transaction.
+     */
+    @Query("""
+            SELECT b FROM LeaveBalance b
+             WHERE b.employee.id IN :employeeIds
+               AND b.leaveType.code = :leaveTypeCode
+               AND b.leaveYear = :year
+            """)
+    List<LeaveBalance> findForEmployeesAndTypeAndYear(
+            @Param("employeeIds") java.util.Collection<Long> employeeIds,
+            @Param("leaveTypeCode") String leaveTypeCode,
+            @Param("year") short year);
 }

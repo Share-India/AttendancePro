@@ -221,7 +221,7 @@ public class LeaveBalanceService {
      * in a settings row should not stop everybody reading their balance, and
      * the log says which row is wrong.
      */
-    private LocalDate accrualStartDate() {
+    public LocalDate accrualStartDate() {
         return companySettingRepository.findBySettingKey("leave.accrual_start_date")
                 .map(CompanySetting::getSettingValue)
                 .filter(value -> value != null && !value.isBlank())
@@ -238,7 +238,7 @@ public class LeaveBalanceService {
                 .orElse(null);
     }
 
-    private LocalDate leaveYearStart(short leaveYear) {
+    public LocalDate leaveYearStart(short leaveYear) {
         int startMonth = companySettingRepository.findBySettingKey("leave.year_start_month")
                 .map(setting -> {
                     try {
