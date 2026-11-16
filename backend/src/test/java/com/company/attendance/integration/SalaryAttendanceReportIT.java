@@ -36,6 +36,9 @@ import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.ReportExporter;
 import com.company.attendance.service.ReportService;
 import com.company.attendance.support.DatabaseCleaner;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -106,6 +109,7 @@ class SalaryAttendanceReportIT {
     @Autowired LeaveRequestDayRepository leaveRequestDayRepository;
     @Autowired CompanySettingRepository companySettingRepository;
     @Autowired DatabaseCleaner databaseCleaner;
+    @Autowired EntityManagerFactory entityManagerFactory;
 
     private Office office;
     private Shift shift;
@@ -694,5 +698,35 @@ class SalaryAttendanceReportIT {
         assertThat(row.get("d1")).isEqualTo("Present");
         assertThat(number(row, "workingDays")).isEqualTo("23");
         assertThat(row.get("comments")).isEqualTo("");
+    }
+
+    @Test
+    @DisplayName("the cost of a row does not grow with the days replayed")
+    void queriesDoNotScaleWithEmployeesTimesDays() {
+        // The first version of this report read attendance.tracking_start_date
+        // from company_settings inside the per-day loop. Every figure it
+        // produced was correct, so no assertion in this class could see it --
+        // but a 42-person sheet became thousands of queries and the browser
+        // timed out before the report returned.
+        //
+        // Counting queries is the only way that failure is visible. The bound
+        // is deliberately loose: this guards against a lookup per day, not
+        // against a few extra statements.
+        Statistics statistics = entityManagerFactory
+                .unwrap(SessionFactory.class).getStatistics();
+
+        employee("EMP7020", "First", "Person", "10");
+        employee("EMP7021", "Second", "Person", "10");
+        employee("EMP7022", "Third", "Person", "10");
+
+        statistics.clear();
+        october();
+        long queries = statistics.getPrepareStatementCount();
+
+        // Three employees across a 31-day month, replayed from the leave-year
+        // opening. A per-day lookup would be in the hundreds.
+        assertThat(queries)
+                .as("queries for a three-person salary sheet")
+                .isLessThan(40);
     }
 }

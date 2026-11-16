@@ -472,6 +472,12 @@ public class ReportServiceImpl implements ReportService {
         LocalDate monthEnd = month.atEndOfMonth();
         LocalDate today = LocalDate.now();
 
+        // Resolved once. Every day of every employee needs it, and reading it
+        // from company_settings per use turned a 42-person sheet into
+        // thousands of queries -- slow enough that the browser gave up before
+        // the report returned.
+        LocalDate trackingStart = calendarService.trackingStartDate();
+
         short leaveYear = leaveBalanceService.resolveLeaveYear(monthStart);
         LocalDate yearStart = leaveBalanceService.leaveYearStart(leaveYear);
         LocalDate accrualStart = leaveBalanceService.accrualStartDate();
@@ -541,7 +547,7 @@ public class ReportServiceImpl implements ReportService {
                 DayCell cell = classify(employee, date,
                         dayTypes.getOrDefault(date, Map.of())
                                 .getOrDefault(employee.getId(), DayType.WORKING),
-                        days.get(date), leaves.containsKey(date), today);
+                        days.get(date), leaves.containsKey(date), today, trackingStart);
 
                 row.put(dayKey(day), cell.label());
 
@@ -583,7 +589,8 @@ public class ReportServiceImpl implements ReportService {
             }
 
             BigDecimal opening = openingBalance(employee, ledger.get(employee.getId()),
-                    yearStart, monthStart, accrualStart, dayTypes, days, leaves, today);
+                    yearStart, monthStart, accrualStart, dayTypes, days, leaves, today,
+                    trackingStart);
             BigDecimal accrued = paidLeaveAccrualService
                     .accruedBy(employee, monthStart, monthEnd, accrualStart);
 
@@ -668,7 +675,8 @@ public class ReportServiceImpl implements ReportService {
      * weekly off and a leave day both.
      */
     private DayCell classify(Employee employee, LocalDate date, DayType dayType,
-                             Attendance attendance, boolean onLeave, LocalDate today) {
+                             Attendance attendance, boolean onLeave, LocalDate today,
+                             LocalDate trackingStart) {
 
         if (!wasEmployedOn(employee, date)) {
             return DayCell.BLANK;
@@ -687,7 +695,11 @@ public class ReportServiceImpl implements ReportService {
         if (date.isAfter(today)) {
             return DayCell.UPCOMING;
         }
-        if (!calendarService.isTracked(date)) {
+        // Compared against a value resolved once for the whole report, not
+        // asked of CalendarService per call: this runs for every employee on
+        // every day of the replayed leave year, and a settings lookup there
+        // is thousands of queries for one sheet.
+        if (trackingStart != null && date.isBefore(trackingStart)) {
             return DayCell.NOT_TRACKED;
         }
 
@@ -729,7 +741,7 @@ public class ReportServiceImpl implements ReportService {
                                       Map<LocalDate, Map<Long, DayType>> dayTypes,
                                       Map<LocalDate, Attendance> days,
                                       Map<LocalDate, BigDecimal> leaves,
-                                      LocalDate today) {
+                                      LocalDate today, LocalDate trackingStart) {
 
         BigDecimal opening = balance == null ? BigDecimal.ZERO
                 : balance.getOpeningBalance()
@@ -748,7 +760,7 @@ public class ReportServiceImpl implements ReportService {
             DayCell cell = classify(employee, date,
                     dayTypes.getOrDefault(date, Map.of())
                             .getOrDefault(employee.getId(), DayType.WORKING),
-                    days.get(date), leaves.containsKey(date), today);
+                    days.get(date), leaves.containsKey(date), today, trackingStart);
 
             if (cell == DayCell.LEAVE || cell == DayCell.HALF_DAY) {
                 opening = opening.subtract(leaves.getOrDefault(date, BigDecimal.ZERO));

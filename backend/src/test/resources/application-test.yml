@@ -16,6 +16,10 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
         jdbc:
           time_zone: UTC
+        # So a test can count the queries a request actually makes. The
+        # salary sheet once read one setting per employee per day, which no
+        # assertion about its figures could ever have caught.
+        generate_statistics: true
   flyway:
     enabled: false
 
