@@ -176,6 +176,17 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      # The container healthcheck probes /actuator/health/liveness, which only
+      # exists when these are enabled. Without it the probe 404s forever and
+      # the backend reports "unhealthy" while serving perfectly well -- an
+      # alarm that is always on is an alarm nobody believes when it is real.
+      #
+      # Liveness, not readiness: readiness goes DOWN when the database is
+      # briefly unreachable, and restarting the application does not fix a
+      # database. Liveness answers the only question a restart can act on --
+      # is this process still working.
+      probes:
+        enabled: true
   health:
     # spring-boot-starter-mail registers a health indicator that opens an SMTP
     # connection, and a failure there makes the whole application report DOWN.
