@@ -62,6 +62,62 @@ public class GeofenceService {
     }
 
     /**
+     * Which work mode a punch turned out to be, and the location check that
+     * settled it.
+     */
+    public record ModeResolution(WorkMode workMode, GeofenceResult geofence) {}
+
+    /**
+     * Decides a punch's work mode when the caller did not state one, then
+     * validates it.
+     *
+     * <p>An approved work-from-home request is permission to be away from the
+     * office, not an instruction to stay away: somebody may come in anyway.
+     * So the office is tried first, and work-from-home is what the punch falls
+     * back to when the employee cannot be placed at an office location. The
+     * record then says where they actually were rather than where they planned
+     * to be.
+     *
+     * <p>Any geofence failure is a fallback, not just being out of radius: a
+     * refused location permission, a vague fix, an office with no circle
+     * configured. On a day somebody is approved to work from home, none of
+     * those should stop them punching -- the approval has already answered the
+     * question the geofence exists to ask.
+     *
+     * <p>An explicit work mode is always honoured as given. This only fills in
+     * a mode the caller left open.
+     */
+    @Transactional(readOnly = true)
+    public ModeResolution resolve(Employee employee,
+                                  BigDecimal latitude,
+                                  BigDecimal longitude,
+                                  BigDecimal accuracyMeters,
+                                  WorkMode requested,
+                                  LocationPolicy policy,
+                                  boolean wfhApproved) {
+
+        if (requested != null) {
+            return new ModeResolution(requested, validate(
+                    employee, latitude, longitude, accuracyMeters, requested, policy, wfhApproved));
+        }
+
+        if (!wfhApproved) {
+            return new ModeResolution(WorkMode.OFFICE, validate(
+                    employee, latitude, longitude, accuracyMeters, WorkMode.OFFICE, policy, false));
+        }
+
+        try {
+            return new ModeResolution(WorkMode.OFFICE, validateAgainstGeofence(
+                    employee, latitude, longitude, accuracyMeters, policy));
+        } catch (BusinessException notAtOffice) {
+            log.debug("Approved work-from-home punch by {} could not be placed at an office ({}). "
+                            + "Recording it as work from home.",
+                    employee.getEmployeeCode(), notAtOffice.getMessage());
+            return new ModeResolution(WorkMode.WFH, validateWorkFromHome(policy, true));
+        }
+    }
+
+    /**
      * Validates a punch location, throwing when it must be refused.
      *
      * @param wfhApproved whether an approved work-from-home request covers this date

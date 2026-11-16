@@ -19,6 +19,7 @@ import com.company.attendance.repository.AttendanceBreakRepository;
 import com.company.attendance.repository.AttendanceRepository;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.EmployeeShiftRepository;
+import com.company.attendance.repository.WfhRequestDayRepository;
 import com.company.attendance.service.ShiftResolutionService;
 import com.company.attendance.security.AccessScopeResolver;
 import com.company.attendance.security.UserPrincipal;
@@ -51,6 +52,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final AttendanceBreakRepository breakRepository;
     private final EmployeeRepository employeeRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
+    private final WfhRequestDayRepository wfhRequestDayRepository;
     private final ShiftResolutionService shiftResolutionService;
     private final CalendarService calendarService;
     private final AccessScopeResolver accessScopeResolver;
@@ -60,6 +62,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                                  AttendanceBreakRepository breakRepository,
                                  EmployeeRepository employeeRepository,
                                  EmployeeShiftRepository employeeShiftRepository,
+                                 WfhRequestDayRepository wfhRequestDayRepository,
                                  ShiftResolutionService shiftResolutionService,
                                  CalendarService calendarService,
                                  AccessScopeResolver accessScopeResolver,
@@ -68,6 +71,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         this.breakRepository = breakRepository;
         this.employeeRepository = employeeRepository;
         this.employeeShiftRepository = employeeShiftRepository;
+        this.wfhRequestDayRepository = wfhRequestDayRepository;
         this.shiftResolutionService = shiftResolutionService;
         this.calendarService = calendarService;
         this.accessScopeResolver = accessScopeResolver;
@@ -140,7 +144,9 @@ public class AttendanceServiceImpl implements AttendanceService {
                 businessDate,
                 today.map(a -> a.getAttendanceStatus().name()).orElse("NOT_PUNCHED_IN"),
                 dayType.name(),
-                today.map(a -> a.getWorkMode().name()).orElse("OFFICE"),
+                today.map(a -> a.getWorkMode().name())
+                        .orElseGet(() -> wfhRequestDayRepository
+                                .isApprovedOn(employee.getId(), businessDate) ? "WFH" : "OFFICE"),
                 today.map(Attendance::getPunchInTime).orElse(null),
                 today.map(Attendance::getPunchOutTime).orElse(null),
                 now,

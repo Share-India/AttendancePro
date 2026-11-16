@@ -105,7 +105,12 @@ export const PunchCard = () => {
         longitude: position.longitude,
         accuracyMeters: position.accuracyMeters,
         capturedAt: position.capturedAt,
-        workMode: 'OFFICE',
+        // Deliberately not sent. The server decides: an approved
+        // work-from-home day records WFH when the employee is not at an
+        // office, and OFFICE when they came in anyway. Sending 'OFFICE' from
+        // here -- as this did -- made an approved work-from-home day
+        // impossible to punch, because the geofence then applied to somebody
+        // entitled to be at home.
         deviceInfo: describeDevice(),
       });
     } finally {
@@ -190,6 +195,9 @@ export const PunchCard = () => {
             />
             {status.lateMinutes > 0 && (
               <StatusChip label={`${status.lateMinutes} min late`} tone="warning" />
+            )}
+            {status.workMode === 'WFH' && (
+              <StatusChip label="Working from home" tone="info" />
             )}
             {status.suspicious && <StatusChip label="Flagged for review" tone="error" />}
           </div>

@@ -156,14 +156,18 @@ public class PunchServiceImpl implements PunchService {
         //    a half day still expects a punch for the half being worked.
         assertNotOnFullDayLeave(employee, businessDate);
 
-        // 7. Punch window.
+        // 7. Punch window. The work mode may still be unset here -- step 8
+        //    settles it.
         WorkMode workMode = parseWorkMode(request.workMode());
         assertWithinPunchWindow(now, businessDate, zone, shift, attendancePolicy);
 
-        // 8 & 9. Accuracy gate and geofence.
-        GeofenceService.GeofenceResult geofence = geofenceService.validate(
+        // 8 & 9. Accuracy gate, geofence, and -- when the caller did not state
+        //        a work mode -- which mode this punch actually is.
+        GeofenceService.ModeResolution resolution = geofenceService.resolve(
                 employee, request.latitude(), request.longitude(), request.accuracyMeters(),
                 workMode, locationPolicy, isWorkFromHomeApproved(employee, businessDate));
+        workMode = resolution.workMode();
+        GeofenceService.GeofenceResult geofence = resolution.geofence();
 
         // 10. Suspicion flags — advisory unless policy says otherwise.
         Set<SuspicionFlag> flags = suspiciousPunchDetector.detect(
@@ -402,9 +406,19 @@ public class PunchServiceImpl implements PunchService {
         return workFromHomeService.isApprovedOn(employee.getId(), date);
     }
 
+    /**
+     * The work mode the caller asked for, or null when they did not say.
+     *
+     * <p>Null is not the same as OFFICE. It means "decide for me", and
+     * GeofenceService.resolve does -- picking work from home when an approval
+     * covers the day and the employee is not at an office. Defaulting to
+     * OFFICE here instead would make an approved work-from-home day
+     * unpunchable, because the geofence would then apply to somebody who is
+     * entitled to be at home.
+     */
     private WorkMode parseWorkMode(String value) {
         if (value == null || value.isBlank()) {
-            return WorkMode.OFFICE;
+            return null;
         }
         try {
             return WorkMode.valueOf(value.trim().toUpperCase(Locale.ROOT));
