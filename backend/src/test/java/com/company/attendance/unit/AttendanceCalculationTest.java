@@ -332,4 +332,70 @@ class AttendanceCalculationTest {
                     .isEqualTo(service.calculateLateMinutes(nyIn, MONDAY, newYork, generalShift, policy));
         }
     }
+
+    @Nested
+    @DisplayName("a full day has to be reachable inside the shift")
+    class FullDayIsReachable {
+
+        /** A nine-hour span, as every one of this company's shifts is. */
+        private Shift nineHourShift(int fullDayMinutes) {
+            Shift shift = new Shift();
+            shift.setCode("TEST");
+            shift.setStartTime(LocalTime.of(8, 30));
+            shift.setEndTime(LocalTime.of(17, 30));
+            shift.setStandardWorkMinutes((short) fullDayMinutes);
+            shift.setFullDayMinutes((short) fullDayMinutes);
+            shift.setHalfDayMinutes((short) (fullDayMinutes / 2));
+            shift.setMinAttendanceMinutes((short) 120);
+            return shift;
+        }
+
+        @Test
+        @DisplayName("working the whole shift less the break allowance is a full day")
+        void breaksDoNotCostHalfADay() {
+            // 9 hours present, 45 minutes of deductible break -- lunch and a
+            // personal break at Share India's limits -- leaves 495 worked.
+            // With the full day set to 480 that is a present day, as it must
+            // be: a rule nobody can satisfy without skipping lunch is not a
+            // rule, it is a defect.
+            Shift shift = nineHourShift(480);
+
+            assertThat(service.determineStatus(495, DayType.WORKING, WorkMode.OFFICE, shift, policy))
+                    .isEqualTo(AttendanceStatus.PRESENT);
+        }
+
+        @Test
+        @DisplayName("a full day equal to the whole span makes an ordinary day a half day")
+        void theMisconfigurationThisGuardsAgainst() {
+            // Early and Late were defined this way: full_day_minutes 540 on a
+            // 540-minute span. Eighteen people could not reach a full day
+            // without working every minute and taking no break at all. Two
+            // lost half a day's pay before it was noticed.
+            //
+            // Kept as a test rather than a comment because the arithmetic is
+            // not wrong here -- the configuration was. This is what that
+            // configuration does, stated plainly.
+            Shift impossible = nineHourShift(540);
+
+            assertThat(service.determineStatus(535, DayType.WORKING, WorkMode.OFFICE, impossible, policy))
+                    .isEqualTo(AttendanceStatus.HALF_DAY);
+
+            // The same day against a correctly configured shift.
+            assertThat(service.determineStatus(535, DayType.WORKING, WorkMode.OFFICE,
+                    nineHourShift(480), policy))
+                    .isEqualTo(AttendanceStatus.PRESENT);
+        }
+
+        @Test
+        @DisplayName("a genuinely short day is still a half day")
+        void realHalfDaysAreUntouched() {
+            // The correction must not turn every short day into a full one.
+            Shift shift = nineHourShift(480);
+
+            assertThat(service.determineStatus(300, DayType.WORKING, WorkMode.OFFICE, shift, policy))
+                    .isEqualTo(AttendanceStatus.HALF_DAY);
+            assertThat(service.determineStatus(150, DayType.WORKING, WorkMode.OFFICE, shift, policy))
+                    .isEqualTo(AttendanceStatus.INSUFFICIENT_HOURS);
+        }
+    }
 }
