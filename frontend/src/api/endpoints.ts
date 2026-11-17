@@ -18,6 +18,7 @@ export const endpoints = {
     reactivate: (id: number) => `/employees/${id}/reactivate`,
     manager: (id: number) => `/employees/${id}/manager`,
     roles: (id: number) => `/employees/${id}/roles`,
+    assignableRoles: '/employees/assignable-roles',
     shift: (id: number) => `/employees/${id}/shift`,
     shifts: (id: number) => `/employees/${id}/shifts`,
     resetPassword: (id: number) => `/employees/${id}/reset-password`,

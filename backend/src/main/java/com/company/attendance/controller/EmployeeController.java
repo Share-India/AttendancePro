@@ -14,6 +14,7 @@ import com.company.attendance.dto.response.employee.EmployeeSummaryResponse;
 import com.company.attendance.dto.response.master.ShiftAssignmentResponse;
 import com.company.attendance.security.CurrentUser;
 import com.company.attendance.security.UserPrincipal;
+import com.company.attendance.repository.RoleRepository;
 import com.company.attendance.service.EmployeeService;
 import com.company.attendance.service.EmployeeService.PasswordResetResult;
 import com.company.attendance.service.ShiftService;
@@ -36,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -53,10 +55,13 @@ public class EmployeeController {
 
     private final EmployeeService employeeService;
     private final ShiftService shiftService;
+    private final RoleRepository roleRepository;
 
-    public EmployeeController(EmployeeService employeeService, ShiftService shiftService) {
+    public EmployeeController(EmployeeService employeeService, ShiftService shiftService,
+                              RoleRepository roleRepository) {
         this.employeeService = employeeService;
         this.shiftService = shiftService;
+        this.roleRepository = roleRepository;
     }
 
     @GetMapping
@@ -187,6 +192,27 @@ public class EmployeeController {
         return ResponseEntity.ok(ApiResponse.success(
                 employeeService.assignManager(id, request), "Reporting manager updated"));
     }
+
+    /**
+     * The roles that can be granted.
+     *
+     * <p>Read from the database rather than listed in the client, so a role
+     * added or retired in the database is reflected without a release -- and
+     * so the picker can never offer one that does not exist.
+     */
+    @GetMapping("/assignable-roles")
+    @PreAuthorize("hasAuthority('USER_ROLE_ASSIGN')")
+    @Operation(summary = "Roles that can be granted to an employee")
+    public ResponseEntity<ApiResponse<List<RoleOption>>> assignableRoles() {
+        List<RoleOption> roles = roleRepository.findByActiveTrue().stream()
+                .map(role -> new RoleOption(role.getCode(), role.getName(), role.getDescription()))
+                .sorted(Comparator.comparing(RoleOption::code))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(roles));
+    }
+
+    /** A grantable role, as the picker shows it. */
+    public record RoleOption(String code, String name, String description) {}
 
     @PutMapping("/{id}/roles")
     @PreAuthorize("hasAuthority('USER_ROLE_ASSIGN')")

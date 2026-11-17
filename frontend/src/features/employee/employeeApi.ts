@@ -9,6 +9,7 @@ import type {
   EmployeeSummary,
   PasswordResetResult,
   ResetMethod,
+  RoleOption,
   ShiftAssignment,
 } from '../../types/employee';
 
@@ -81,6 +82,13 @@ export const employeeApi = {
     const response = await apiClient.put<ApiResponse<ShiftAssignment>>(
       endpoints.employees.shift(id),
       payload,
+    );
+    return unwrap(response);
+  },
+
+  assignableRoles: async (): Promise<RoleOption[]> => {
+    const response = await apiClient.get<ApiResponse<RoleOption[]>>(
+      endpoints.employees.assignableRoles,
     );
     return unwrap(response);
   },

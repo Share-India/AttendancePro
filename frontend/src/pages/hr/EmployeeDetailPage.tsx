@@ -42,6 +42,8 @@ export const EmployeeDetailPage = () => {
   const [shiftOpen, setShiftOpen] = useState(false);
   const [shiftId, setShiftId] = useState('');
   const [shiftFrom, setShiftFrom] = useState(new Date().toISOString().slice(0, 10));
+  const [rolesOpen, setRolesOpen] = useState(false);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [managerId, setManagerId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().slice(0, 10));
 
@@ -71,6 +73,25 @@ export const EmployeeDetailPage = () => {
       // reporting tree, so they are stale the moment this changes.
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setManagerOpen(false);
+    },
+  });
+
+  /** Fetched only while the dialog is open, like the manager candidates. */
+  const { data: roleOptions } = useQuery({
+    queryKey: ['employees', 'assignable-roles'],
+    queryFn: () => employeeApi.assignableRoles(),
+    enabled: rolesOpen,
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const assignRoles = useMutation({
+    mutationFn: () => employeeApi.assignRoles(employeeId, selectedRoles),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      // Approval inboxes and the team dashboard are permission-scoped, so a
+      // role change makes them stale for whoever is looking at them.
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setRolesOpen(false);
     },
   });
 
@@ -144,6 +165,7 @@ export const EmployeeDetailPage = () => {
   const canResetPassword = hasPermission(PERMISSIONS.USER_PASSWORD_RESET);
   // The same authority the API enforces on PUT /employees/{id}/shift.
   const canAssignShift = hasPermission(PERMISSIONS.SHIFT_ASSIGN);
+  const canAssignRoles = hasPermission(PERMISSIONS.USER_ROLE_ASSIGN);
 
   return (
     <div className="mx-auto max-w-[1280px]">
@@ -346,7 +368,22 @@ export const EmployeeDetailPage = () => {
             <dl className="space-y-md">
               <Field label="Username" value={employee.username} />
               <div>
-                <dt className="text-body-sm text-on-surface-variant">Roles</dt>
+                <div className="flex items-center justify-between gap-md">
+                  <dt className="text-body-sm text-on-surface-variant">Roles</dt>
+                  {canAssignRoles && (
+                    <button
+                      type="button"
+                      className="text-body-sm text-primary underline underline-offset-2"
+                      onClick={() => {
+                        assignRoles.reset();
+                        setSelectedRoles(employee.roles);
+                        setRolesOpen(true);
+                      }}
+                    >
+                      Change
+                    </button>
+                  )}
+                </div>
                 <dd className="mt-xs flex flex-wrap gap-1">
                   {employee.roles.length > 0 ? (
                     employee.roles.map((role) => (
@@ -380,6 +417,93 @@ export const EmployeeDetailPage = () => {
           )}
         </div>
       </div>
+
+      <Modal
+        open={rolesOpen}
+        onClose={() => setRolesOpen(false)}
+        title={`Roles for ${employee.fullName}`}
+        description="Roles decide what someone can do. Assigning a reporting manager decides who a request goes to — it does not, on its own, let that person approve it."
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setRolesOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={selectedRoles.length === 0 || assignRoles.isPending}
+              onClick={() => assignRoles.mutate()}
+            >
+              {assignRoles.isPending ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <Icon name="check" className="text-[18px]" />
+              )}
+              Save
+            </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-md">
+          {assignRoles.isError && (
+            <Alert variant="error" title="Could not change the roles">
+              {assignRoles.error instanceof ApiError
+                ? assignRoles.error.message
+                : 'Please try again.'}
+            </Alert>
+          )}
+
+          {!roleOptions ? (
+            <div className="flex justify-center py-lg">
+              <Spinner className="h-6 w-6 text-primary" />
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-xs">
+              {roleOptions.map((role) => {
+                const checked = selectedRoles.includes(role.code);
+                return (
+                  <li key={role.code}>
+                    <label className="flex cursor-pointer items-start gap-sm rounded-md border border-outline-variant/60 p-sm hover:bg-surface-variant/40">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 accent-primary"
+                        checked={checked}
+                        onChange={(event) =>
+                          setSelectedRoles((current) =>
+                            event.target.checked
+                              ? [...current, role.code]
+                              : current.filter((code) => code !== role.code),
+                          )
+                        }
+                      />
+                      <span>
+                        <span className="block text-body-md text-on-surface">{role.name}</span>
+                        {role.description && (
+                          <span className="block text-body-sm text-on-surface-variant">
+                            {role.description}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {selectedRoles.length === 0 && (
+            <Alert variant="warning">
+              Everyone needs at least one role. Without one they can sign in and do nothing at
+              all — not even punch.
+            </Alert>
+          )}
+
+          <Alert variant="info">
+            Saving signs {employee.fullName.split(' ')[0]} out everywhere. Permissions are carried
+            in the session, so the change only reaches them when they sign in again.
+          </Alert>
+        </div>
+      </Modal>
 
       <Modal
         open={shiftOpen}

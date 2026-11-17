@@ -121,3 +121,10 @@ export interface PasswordResetResult {
 
 export const EMPLOYMENT_TYPES = ['PERMANENT', 'CONTRACT', 'INTERN', 'CONSULTANT'] as const;
 export const EMPLOYMENT_STATUSES = ['ACTIVE', 'ON_NOTICE', 'EXITED', 'SUSPENDED'] as const;
+
+/** A role an administrator can grant, as the server lists them. */
+export interface RoleOption {
+  code: string;
+  name: string;
+  description: string | null;
+}
