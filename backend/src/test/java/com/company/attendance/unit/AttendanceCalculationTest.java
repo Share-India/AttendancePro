@@ -387,6 +387,26 @@ class AttendanceCalculationTest {
         }
 
         @Test
+        @DisplayName("the expected day and a full day are different numbers")
+        void expectedIsNineHoursButAFullDayIsEight() {
+            // The punch screen promises nine hours because that is how long
+            // somebody is at work. A full day needs eight, because work is
+            // counted net of lunch. Collapsing the two breaks one or the
+            // other: equal at 540 makes a full day unreachable, equal at 480
+            // makes the screen promise a day nobody works.
+            Shift shift = nineHourShift(480);
+            shift.setStandardWorkMinutes((short) 540);
+
+            // Present the whole span, 45 minutes of deductible break.
+            assertThat(service.determineStatus(495, DayType.WORKING, WorkMode.OFFICE, shift, policy))
+                    .isEqualTo(AttendanceStatus.PRESENT);
+
+            // And no overtime for having eaten quickly.
+            assertThat(service.calculateOvertimeMinutes(495, shift)).isZero();
+            assertThat(service.calculateOvertimeMinutes(570, shift)).isEqualTo(30);
+        }
+
+        @Test
         @DisplayName("a genuinely short day is still a half day")
         void realHalfDaysAreUntouched() {
             // The correction must not turn every short day into a full one.
