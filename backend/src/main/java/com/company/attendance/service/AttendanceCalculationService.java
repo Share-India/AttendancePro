@@ -119,6 +119,8 @@ public class AttendanceCalculationService {
 
         int fullDay = shift != null && shift.getFullDayMinutes() > 0
                 ? shift.getFullDayMinutes() : policy.getFullDayMinutes();
+        int shortDay = shift != null && shift.getShortDayMinutes() > 0
+                ? shift.getShortDayMinutes() : policy.getShortDayMinutes();
         int halfDay = shift != null && shift.getHalfDayMinutes() > 0
                 ? shift.getHalfDayMinutes() : policy.getHalfDayMinutes();
         int minimum = shift != null && shift.getMinAttendanceMinutes() > 0
@@ -133,6 +135,12 @@ public class AttendanceCalculationService {
 
         if (workingMinutes >= fullDay) {
             return workMode == WorkMode.WFH ? AttendanceStatus.WFH : AttendanceStatus.PRESENT;
+        }
+        // Short of a full day, but not by much. Paid in full and flagged, so
+        // that twenty minutes costs a conversation rather than half a day's
+        // pay -- which is the only other thing this could have been called.
+        if (workingMinutes >= shortDay) {
+            return AttendanceStatus.SHORT_DAY;
         }
         if (workingMinutes >= halfDay) {
             return AttendanceStatus.HALF_DAY;

@@ -53,6 +53,13 @@ public class Shift extends BaseEntity {
     @Column(name = "full_day_minutes", nullable = false)
     private short fullDayMinutes = 480;
 
+    /**
+     * At or above this, but below a full day, the day is a SHORT_DAY: paid in
+     * full and flagged, rather than halved.
+     */
+    @Column(name = "short_day_minutes", nullable = false)
+    private short shortDayMinutes = 420;
+
     @Column(name = "half_day_minutes", nullable = false)
     private short halfDayMinutes = 240;
 

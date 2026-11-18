@@ -20,6 +20,7 @@ import type { AttendanceRecord } from '../../types/attendance';
 const STATUS_TONE: Record<string, 'neutral' | 'info' | 'success' | 'warning' | 'error'> = {
   PRESENT: 'success',
   WORK_FROM_HOME: 'success',
+  SHORT_DAY: 'warning',
   HALF_DAY: 'warning',
   LATE: 'warning',
   MISSING_PUNCH_OUT: 'warning',

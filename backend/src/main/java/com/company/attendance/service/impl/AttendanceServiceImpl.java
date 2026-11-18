@@ -352,7 +352,8 @@ public class AttendanceServiceImpl implements AttendanceService {
                 }
 
                 switch (attendance.getAttendanceStatus()) {
-                    case PRESENT, REGULARIZED, ON_DUTY -> present++;
+                    // A short day is paid in full, so it counts as present here.
+                    case PRESENT, SHORT_DAY, REGULARIZED, ON_DUTY -> present++;
                     case WFH -> {
                         wfh++;
                         present++;

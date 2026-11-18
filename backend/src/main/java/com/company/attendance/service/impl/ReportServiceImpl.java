@@ -412,6 +412,7 @@ public class ReportServiceImpl implements ReportService {
 
         PRESENT("Present"),
         LATE("Late"),
+        SHORT_DAY("Short day"),
         HALF_DAY("Half day"),
         LEAVE("Leave"),
         ABSENT("Absent"),
@@ -451,7 +452,9 @@ public class ReportServiceImpl implements ReportService {
 
         /** Days credited to "Total days worked". A late arrival still worked. */
         BigDecimal worked() {
-            if (this == PRESENT || this == LATE) {
+            // SHORT_DAY earns a full day. It is a cell of its own only so the
+            // sheet shows which days ran short of the mark.
+            if (this == PRESENT || this == LATE || this == SHORT_DAY) {
                 return BigDecimal.ONE;
             }
             return this == HALF_DAY ? HALF : BigDecimal.ZERO;
@@ -685,6 +688,9 @@ public class ReportServiceImpl implements ReportService {
         if (attendance != null && attendance.getPunchInTime() != null) {
             if (attendance.getAttendanceStatus() == AttendanceStatus.HALF_DAY) {
                 return DayCell.HALF_DAY;
+            }
+            if (attendance.getAttendanceStatus() == AttendanceStatus.SHORT_DAY) {
+                return DayCell.SHORT_DAY;
             }
             return attendance.getLateMinutes() > 0 ? DayCell.LATE : DayCell.PRESENT;
         }

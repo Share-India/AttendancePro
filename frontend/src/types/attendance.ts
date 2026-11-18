@@ -154,6 +154,9 @@ export const STATUS_TONE: Record<string, 'success' | 'warning' | 'error' | 'info
   ON_DUTY: 'success',
   PUNCHED_IN: 'info',
   ON_BREAK: 'warning',
+  // Paid in full, so not an error -- but visible, because somebody should
+  // notice a run of them.
+  SHORT_DAY: 'warning',
   HALF_DAY: 'warning',
   INSUFFICIENT_HOURS: 'warning',
   MISSING_PUNCH_OUT: 'warning',

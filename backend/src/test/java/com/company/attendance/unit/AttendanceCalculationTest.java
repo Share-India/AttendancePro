@@ -42,6 +42,7 @@ class AttendanceCalculationTest {
 
         policy = new AttendancePolicy();
         policy.setFullDayMinutes((short) 480);
+        policy.setShortDayMinutes((short) 420);
         policy.setHalfDayMinutes((short) 240);
         policy.setMinAttendanceMinutes((short) 120);
         policy.setGracePeriodMinutes((short) 15);
@@ -55,6 +56,7 @@ class AttendanceCalculationTest {
         generalShift.setEarlyExitGraceMinutes((short) 15);
         generalShift.setStandardWorkMinutes((short) 480);
         generalShift.setFullDayMinutes((short) 480);
+        generalShift.setShortDayMinutes((short) 420);
         generalShift.setHalfDayMinutes((short) 240);
         generalShift.setMinAttendanceMinutes((short) 120);
     }
@@ -345,6 +347,7 @@ class AttendanceCalculationTest {
             shift.setEndTime(LocalTime.of(17, 30));
             shift.setStandardWorkMinutes((short) fullDayMinutes);
             shift.setFullDayMinutes((short) fullDayMinutes);
+            shift.setShortDayMinutes((short) (fullDayMinutes - 60));
             shift.setHalfDayMinutes((short) (fullDayMinutes / 2));
             shift.setMinAttendanceMinutes((short) 120);
             return shift;
@@ -377,8 +380,12 @@ class AttendanceCalculationTest {
             // configuration does, stated plainly.
             Shift impossible = nineHourShift(540);
 
+            // With the short-day band in place this no longer costs half a
+            // day's pay -- but it is still not a full day, which is wrong for
+            // somebody who worked one. The band limits the damage of a bad
+            // shift definition; it does not excuse one.
             assertThat(service.determineStatus(535, DayType.WORKING, WorkMode.OFFICE, impossible, policy))
-                    .isEqualTo(AttendanceStatus.HALF_DAY);
+                    .isEqualTo(AttendanceStatus.SHORT_DAY);
 
             // The same day against a correctly configured shift.
             assertThat(service.determineStatus(535, DayType.WORKING, WorkMode.OFFICE,
@@ -404,6 +411,28 @@ class AttendanceCalculationTest {
             // And no overtime for having eaten quickly.
             assertThat(service.calculateOvertimeMinutes(495, shift)).isZero();
             assertThat(service.calculateOvertimeMinutes(570, shift)).isEqualTo(30);
+        }
+
+        @Test
+        @DisplayName("running short by under an hour is a short day, not half a day")
+        void shortOfTheMarkIsNotHalfADay() {
+            // Twenty minutes late and away on time used to cost half a day's
+            // pay -- the same as leaving at lunchtime, because there was
+            // nothing between the two.
+            Shift shift = nineHourShift(480);
+
+            assertThat(service.determineStatus(460, DayType.WORKING, WorkMode.OFFICE, shift, policy))
+                    .isEqualTo(AttendanceStatus.SHORT_DAY);
+            assertThat(service.determineStatus(450, DayType.WORKING, WorkMode.OFFICE, shift, policy))
+                    .isEqualTo(AttendanceStatus.SHORT_DAY);
+
+            // The boundary itself: exactly an hour short is still a short day.
+            assertThat(service.determineStatus(420, DayType.WORKING, WorkMode.OFFICE, shift, policy))
+                    .isEqualTo(AttendanceStatus.SHORT_DAY);
+
+            // Past an hour, the day really has not been worked.
+            assertThat(service.determineStatus(419, DayType.WORKING, WorkMode.OFFICE, shift, policy))
+                    .isEqualTo(AttendanceStatus.HALF_DAY);
         }
 
         @Test

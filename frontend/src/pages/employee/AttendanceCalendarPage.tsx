@@ -19,6 +19,7 @@ const CELL_STYLES: Record<string, string> = {
   PRESENT: 'bg-success-container text-on-success-container border-success/30',
   WFH: 'bg-success-container text-on-success-container border-success/30',
   REGULARIZED: 'bg-success-container text-on-success-container border-success/30',
+  SHORT_DAY: 'bg-warning-container text-on-warning-container border-warning/30',
   HALF_DAY: 'bg-warning-container text-on-warning-container border-warning/30',
   INSUFFICIENT_HOURS: 'bg-warning-container text-on-warning-container border-warning/30',
   MISSING_PUNCH_OUT: 'bg-warning-container text-on-warning-container border-warning/30',
@@ -37,6 +38,7 @@ const CELL_STYLES: Record<string, string> = {
 
 const LEGEND = [
   { status: 'PRESENT', label: 'Present' },
+  { status: 'SHORT_DAY', label: 'Short day' },
   { status: 'HALF_DAY', label: 'Half day' },
   { status: 'ABSENT', label: 'Absent' },
   { status: 'ON_LEAVE', label: 'Leave' },

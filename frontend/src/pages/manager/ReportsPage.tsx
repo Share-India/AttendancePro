@@ -24,6 +24,7 @@ const STATUS_TONE: Record<string, 'success' | 'warning' | 'error' | 'info' | 'ne
   REJECTED: 'error',
   ABSENT: 'error',
   ON_LEAVE: 'info',
+  SHORT_DAY: 'warning',
   HALF_DAY: 'warning',
   WITHDRAWN: 'neutral',
   CANCELLED: 'neutral',
