@@ -22,11 +22,23 @@ const SIZES = {
 export const Modal = ({ open, onClose, title, description, children, footer, size = 'md' }: ModalProps) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Callers almost never memoise onClose -- it is usually an arrow function
+  // declared in the body of the page -- so it is a different function on every
+  // render. Depending on it directly re-ran everything below on every
+  // keystroke, and the focus() call then pulled focus out of whatever the user
+  // was typing into: on a phone the keyboard closed after each letter, and on
+  // a laptop the caret left the field. Held in a ref instead, so the effect
+  // runs when the dialog opens and closes, and at no other time.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('keydown', onKeyDown);
 
@@ -35,13 +47,14 @@ export const Modal = ({ open, onClose, title, description, children, footer, siz
     document.body.style.overflow = 'hidden';
 
     // Move focus into the dialog so keyboard users are not left behind it.
+    // Once, on opening -- never again, or it fights the user for the caret.
     panelRef.current?.focus();
 
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
