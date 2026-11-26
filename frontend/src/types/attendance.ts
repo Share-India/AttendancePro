@@ -177,3 +177,40 @@ export const humaniseStatus = (status: string): string =>
     .split('_')
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
     .join(' ');
+
+/** The rules a working day is measured against. */
+export interface AttendancePolicy {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+
+  fullDayMinutes: number;
+  shortDayMinutes: number;
+  halfDayMinutes: number;
+  minAttendanceMinutes: number;
+
+  gracePeriodMinutes: number;
+  earlyExitGraceMinutes: number;
+  lateMarksForHalfDay: number;
+  lateMarkResetPeriod: string;
+
+  maxBreakMinutes: number;
+  deductBreakFromWorking: boolean;
+  allowPunchOnHoliday: boolean;
+  allowPunchOnWeeklyOff: boolean;
+
+  regularizationWindowDays: number;
+  maxRegularizationsPerMonth: number;
+  maxWfhDaysPerMonth: number;
+  wfhMinNoticeDays: number;
+
+  active: boolean;
+  /** True when shifts set their own day lengths, making the thresholds here a fallback. */
+  shiftOverridesDayLengths: boolean;
+}
+
+export type AttendancePolicyUpdate = Omit<
+  AttendancePolicy,
+  'id' | 'code' | 'active' | 'lateMarkResetPeriod' | 'shiftOverridesDayLengths'
+>;

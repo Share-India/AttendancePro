@@ -44,6 +44,7 @@ export const ROUTES = {
   adminShifts: '/admin/shifts',
   adminHolidays: '/admin/holidays',
   adminWeeklyOffs: '/admin/weekly-offs',
+  adminAttendanceRules: '/admin/attendance-rules',
 
   reports: '/reports',
   profile: '/profile',

@@ -60,6 +60,9 @@ const ShiftsPage = lazy(() => import('../pages/admin/ShiftsPage').then((m) => ({
 const HolidayManagementPage = lazy(() =>
   import('../pages/admin/HolidayManagementPage').then((m) => ({ default: m.HolidayManagementPage })),
 );
+const AttendanceRulesPage = lazy(() =>
+  import('../pages/admin/AttendanceRulesPage').then((m) => ({ default: m.AttendanceRulesPage })),
+);
 const WeeklyOffsPage = lazy(() =>
   import('../pages/admin/WeeklyOffsPage').then((m) => ({ default: m.WeeklyOffsPage })),
 );
@@ -270,6 +273,12 @@ export const AppRoutes = () => (
             from the people who work them. */}
         <Route path={ROUTES.adminHolidays} element={<HolidayManagementPage />} />
         <Route path={ROUTES.adminWeeklyOffs} element={<WeeklyOffsPage />} />
+
+        {/* Guarded: these numbers decide what a day is worth, so the route is
+            closed to anyone who could not change them anyway. */}
+        <Route element={<PermissionGuard anyOf={[PERMISSIONS.POLICY_MANAGE]} />}>
+          <Route path={ROUTES.adminAttendanceRules} element={<AttendanceRulesPage />} />
+        </Route>
 
         <Route element={<PermissionGuard anyOf={[PERMISSIONS.AUDIT_VIEW]} />}>
           <Route path={ROUTES.auditLogs} element={<AuditLogPage />} />

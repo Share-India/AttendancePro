@@ -4,6 +4,7 @@ import type { ApiResponse } from '../../types/api';
 import type {
   Department, Designation, Holiday, Office, OfficeLocation, Shift, WeeklyOff,
 } from '../../types/master';
+import type { AttendancePolicy, AttendancePolicyUpdate } from '../../types/attendance';
 
 const list = async <T>(url: string, activeOnly = true): Promise<T[]> => {
   const response = await apiClient.get<ApiResponse<T[]>>(url, { params: { activeOnly } });
@@ -99,5 +100,22 @@ export const masterApi = {
     deactivate: async (id: number) => {
       await apiClient.delete(endpoints.admin.shiftById(id));
     },
+  },
+};
+
+export const attendancePolicyApi = {
+  findAll: async (): Promise<AttendancePolicy[]> => {
+    const response = await apiClient.get<ApiResponse<AttendancePolicy[]>>(
+      endpoints.admin.attendancePolicies,
+    );
+    return unwrap(response);
+  },
+
+  update: async (id: number, payload: AttendancePolicyUpdate): Promise<AttendancePolicy> => {
+    const response = await apiClient.put<ApiResponse<AttendancePolicy>>(
+      endpoints.admin.attendancePolicyById(id),
+      payload,
+    );
+    return unwrap(response);
   },
 };

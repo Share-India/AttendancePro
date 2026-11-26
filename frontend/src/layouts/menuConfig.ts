@@ -149,6 +149,8 @@ export const MENU: MenuItem[] = [
         requiredPermissions: ['HOLIDAY_MANAGE'] },
       { label: 'Weekly Offs', to: ROUTES.adminWeeklyOffs, icon: 'event_repeat',
         requiredPermissions: ['WEEKLY_OFF_MANAGE'] },
+      { label: 'Attendance Rules', to: ROUTES.adminAttendanceRules, icon: 'rule',
+        requiredPermissions: [PERMISSIONS.POLICY_MANAGE] },
       { label: 'Audit Trail', to: ROUTES.auditLogs, icon: 'policy',
         requiredPermissions: [PERMISSIONS.AUDIT_VIEW] },
     ],
