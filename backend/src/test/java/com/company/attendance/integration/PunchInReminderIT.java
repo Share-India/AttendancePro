@@ -124,7 +124,7 @@ class PunchInReminderIT {
         policy.setCode("TEST");
         policy.setName("Test Attendance Policy");
         policy.setPunchInReminderEnabled(true);
-        policy.setPunchInReminderDelayMinutes((short) 30);
+        policy.setPunchInReminderDelayMinutes((short) 90);
         policy = attendancePolicyRepository.save(policy);
 
         PolicyAssignment assignment = new PolicyAssignment();
@@ -143,7 +143,8 @@ class PunchInReminderIT {
     void theOrdinaryCase() {
         Employee person = employed("S9001", general);
 
-        PunchInReminderService.Sweep sweep = reminderService.sweep(at(10, 5));
+        // 09:30 plus ninety minutes is 11:00.
+        PunchInReminderService.Sweep sweep = reminderService.sweep(at(11, 5));
 
         assertThat(sweep.reminded()).isEqualTo(1);
         assertThat(notificationsFor(person))
@@ -159,20 +160,21 @@ class PunchInReminderIT {
     void notBeforeTheDelayHasPassed() {
         employed("S9002", general);
 
-        // 09:45 is fifteen minutes into a shift with a thirty-minute delay.
-        assertThat(reminderService.sweep(at(9, 45)).reminded()).isZero();
+        // 10:45 is seventy-five minutes into a shift whose reminder is due
+        // at ninety. Still inside the window somebody can simply be late.
+        assertThat(reminderService.sweep(at(10, 45)).reminded()).isZero();
     }
 
     @Test
     @DisplayName("the delay runs from each person's own shift, not from one company-wide time")
     void theDelayIsPerShift() {
-        // The whole reason the delay is not a clock time. At 09:05 the early
-        // shift is thirty-five minutes in and overdue; the general shift has
-        // not started. One fixed time cannot serve both.
+        // The whole reason the delay is not a clock time. At 10:05 the early
+        // shift passed its ninety minutes at 10:00; the general shift does not
+        // reach its own until 11:00. One fixed time cannot serve both.
         Employee earlyBird = employed("S9003", early);
         Employee general930 = employed("S9004", general);
 
-        reminderService.sweep(at(9, 5));
+        reminderService.sweep(at(10, 5));
 
         assertThat(notificationsFor(earlyBird)).hasSize(1);
         assertThat(notificationsFor(general930)).isEmpty();
@@ -186,9 +188,9 @@ class PunchInReminderIT {
         // genuinely away is mailed all morning.
         Employee person = employed("S9005", general);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isEqualTo(1);
-        assertThat(reminderService.sweep(at(10, 10)).reminded()).isZero();
-        assertThat(reminderService.sweep(at(11, 30)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isEqualTo(1);
+        assertThat(reminderService.sweep(at(11, 10)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(12, 30)).reminded()).isZero();
 
         assertThat(notificationsFor(person)).hasSize(1);
     }
@@ -203,7 +205,7 @@ class PunchInReminderIT {
         Employee person = employed("S9006", general);
         grantLeave(person, workday);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
         assertThat(notificationsFor(person)).isEmpty();
     }
 
@@ -213,7 +215,7 @@ class PunchInReminderIT {
         Employee person = employed("S9007", general);
         declareHoliday(workday);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
         assertThat(notificationsFor(person)).isEmpty();
     }
 
@@ -224,7 +226,7 @@ class PunchInReminderIT {
         // A rule for whatever day today happens to be.
         weeklyOffRepository.save(weeklyOff(workday.getDayOfWeek()));
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
         assertThat(notificationsFor(person)).isEmpty();
     }
 
@@ -234,7 +236,7 @@ class PunchInReminderIT {
         Employee person = employed("S9009", general);
         punchIn(person, at(9, 28));
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
         assertThat(notificationsFor(person)).isEmpty();
     }
 
@@ -245,7 +247,7 @@ class PunchInReminderIT {
         person.setJoiningDate(workday.plusWeeks(2));
         employeeRepository.save(person);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
         assertThat(notificationsFor(person)).isEmpty();
     }
 
@@ -256,7 +258,7 @@ class PunchInReminderIT {
         person.setExitDate(workday.minusDays(1));
         employeeRepository.save(person);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
     }
 
     @Test
@@ -268,7 +270,7 @@ class PunchInReminderIT {
         Employee person = person("S9012");
         account(person);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
         assertThat(notificationsFor(person)).isEmpty();
     }
 
@@ -283,19 +285,20 @@ class PunchInReminderIT {
         policy.setPunchInReminderEnabled(false);
         attendancePolicyRepository.save(policy);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
         assertThat(notificationsFor(person)).isEmpty();
     }
 
     @Test
     @DisplayName("the delay is read from the policy, not baked in")
     void theDelayIsConfigurable() {
+        // Moved off the default, or this would prove nothing.
         Employee person = employed("S9014", general);
-        policy.setPunchInReminderDelayMinutes((short) 90);
+        policy.setPunchInReminderDelayMinutes((short) 30);
         attendancePolicyRepository.save(policy);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
-        assertThat(reminderService.sweep(at(11, 5)).reminded()).isEqualTo(1);
+        assertThat(reminderService.sweep(at(9, 45)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(10, 5)).reminded()).isEqualTo(1);
         assertThat(notificationsFor(person)).hasSize(1);
     }
 
@@ -307,7 +310,7 @@ class PunchInReminderIT {
         Employee person = person("S9015");
         assignShift(person, general);
 
-        assertThat(reminderService.sweep(at(10, 5)).reminded()).isZero();
+        assertThat(reminderService.sweep(at(11, 5)).reminded()).isZero();
     }
 
     // -----------------------------------------------------------------

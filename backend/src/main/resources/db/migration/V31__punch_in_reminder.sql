@@ -15,14 +15,20 @@
 --   delay -- how long after a person's own shift starts the reminder
 --   goes. Shift starts here span 08:30 to 10:00, so a single clock time
 --   would chase the early shift ninety minutes late and greet the late
---   shift as they walked in. Thirty minutes is twice the fifteen-minute
---   grace, so nobody is chased for arriving inside it.
+--   shift as they walked in.
+--
+--   Ninety minutes, so a 09:30 shift is reminded at 11:00. That is well
+--   past anybody who is merely running late, which is the point: a
+--   reminder that arrives while people are still filing in is noise, and
+--   noise is what gets a sender filtered to a folder. At ninety minutes
+--   the message is about a day that is genuinely unaccounted for, and
+--   there is still most of a shift left in which to fix it.
 -- =====================================================================
 
 ALTER TABLE attendance_policies
     ADD COLUMN punch_in_reminder_enabled BOOLEAN NOT NULL DEFAULT FALSE
         AFTER auto_punch_out_enabled,
-    ADD COLUMN punch_in_reminder_delay_minutes SMALLINT NOT NULL DEFAULT 30
+    ADD COLUMN punch_in_reminder_delay_minutes SMALLINT NOT NULL DEFAULT 90
         AFTER punch_in_reminder_enabled;
 
 -- A reminder before the shift has started is a reminder to somebody who

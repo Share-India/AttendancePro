@@ -92,10 +92,10 @@ public class AttendancePolicy extends BaseEntity {
      *
      * <p>Measured from their shift, not the clock: a company whose shifts
      * start at 08:30, 09:30 and 10:00 has no single time that is right for
-     * all three.
+     * all three. At the default a 09:30 shift is reminded at 11:00.
      */
     @Column(name = "punch_in_reminder_delay_minutes", nullable = false)
-    private short punchInReminderDelayMinutes = 30;
+    private short punchInReminderDelayMinutes = 90;
 
     @Column(name = "regularization_window_days", nullable = false)
     private short regularizationWindowDays = 7;
