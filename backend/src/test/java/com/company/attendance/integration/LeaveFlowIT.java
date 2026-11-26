@@ -5,6 +5,7 @@ import com.company.attendance.dto.request.leave.LeaveCancelRequest;
 import com.company.attendance.dto.request.leave.LeaveDecisionRequest;
 import com.company.attendance.entity.Employee;
 import com.company.attendance.entity.EmployeeManager;
+import com.company.attendance.entity.CompanySetting;
 import com.company.attendance.entity.Holiday;
 import com.company.attendance.entity.LeavePolicy;
 import com.company.attendance.entity.LeaveType;
@@ -31,6 +32,7 @@ import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.support.DatabaseCleaner;
 import com.company.attendance.service.LeaveBalanceService;
 import com.company.attendance.service.LeaveService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -82,6 +84,17 @@ class LeaveFlowIT {
     @BeforeEach
     void seed() {
         databaseCleaner.clean();
+
+        // The leave year is pinned to start this month, so every date this
+        // class uses sits near the beginning of it.
+        //
+        // Several tests book three consecutive weeks against one balance, and
+        // a leave year boundary in the middle of that silently hands the last
+        // request a fresh allowance -- it is not refused, and the test fails.
+        // Left to the default January start it passed in June and failed in
+        // late November, which is the worst kind of test: one that depends on
+        // the day you run it.
+        setLeaveYearStartMonth(LocalDate.now().getMonthValue());
 
         nextMonday = LocalDate.now().plusWeeks(3).with(TemporalAdjusters.next(DayOfWeek.MONDAY));
 
@@ -140,6 +153,27 @@ class LeaveFlowIT {
                 Set.of("EMPLOYEE"), Set.of("LEAVE_APPLY"));
         approver = UserPrincipal.fromClaims(2L, manager.getId(), "EMP7002",
                 Set.of("MANAGER"), Set.of("LEAVE_APPLY", "LEAVE_APPROVE_L1"));
+    }
+
+    private void setLeaveYearStartMonth(int month) {
+        CompanySetting setting = companySettingRepository
+                .findBySettingKey("leave.year_start_month")
+                .orElseGet(CompanySetting::new);
+        setting.setSettingKey("leave.year_start_month");
+        setting.setSettingValue(String.valueOf(month));
+        setting.setValueType("INT");
+        setting.setCategory("LEAVE");
+        companySettingRepository.save(setting);
+    }
+
+    /**
+     * company_settings outlives DatabaseCleaner, so a leave year pinned here
+     * would follow the suite into unrelated classes and change what they see.
+     */
+    @AfterEach
+    void forgetLeaveYear() {
+        companySettingRepository.findBySettingKey("leave.year_start_month")
+                .ifPresent(companySettingRepository::delete);
     }
 
     private WeeklyOff weeklyOff(DayOfWeek day) {
