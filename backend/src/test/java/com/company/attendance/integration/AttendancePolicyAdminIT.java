@@ -65,7 +65,8 @@ class AttendancePolicyAdminIT {
                 fullDay, shortDay, halfDay, minimum,
                 (short) 15, (short) 15, (short) 3,
                 (short) 60, true, true, true,
-                window, perMonth, (short) 8, (short) 0);
+                window, perMonth, (short) 8, (short) 0,
+                false, (short) 30);
     }
 
     private AttendancePolicyRequest valid() {

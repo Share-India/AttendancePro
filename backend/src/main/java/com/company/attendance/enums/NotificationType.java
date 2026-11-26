@@ -25,6 +25,7 @@ public enum NotificationType {
     // Withdrawn or cancelled by the applicant — the approver should stop waiting.
     REQUEST_WITHDRAWN(NotificationCategory.APPROVAL),
 
+    ATTENDANCE_PUNCH_IN_REMINDER(NotificationCategory.ATTENDANCE),
     ATTENDANCE_MISSING_PUNCH_OUT(NotificationCategory.ATTENDANCE),
     ATTENDANCE_MARKED_ABSENT(NotificationCategory.ATTENDANCE),
 

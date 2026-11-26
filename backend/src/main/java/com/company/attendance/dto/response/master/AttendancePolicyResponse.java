@@ -36,6 +36,9 @@ public record AttendancePolicyResponse(
         short maxWfhDaysPerMonth,
         short wfhMinNoticeDays,
 
+        boolean punchInReminderEnabled,
+        short punchInReminderDelayMinutes,
+
         boolean active,
         boolean shiftOverridesDayLengths
 ) {
@@ -63,6 +66,8 @@ public record AttendancePolicyResponse(
                 policy.getMaxRegularizationsPerMonth(),
                 policy.getMaxWfhDaysPerMonth(),
                 policy.getWfhMinNoticeDays(),
+                policy.isPunchInReminderEnabled(),
+                policy.getPunchInReminderDelayMinutes(),
                 policy.isActive(),
                 shiftOverridesDayLengths);
     }

@@ -1,6 +1,7 @@
 package com.company.attendance.repository;
 
 import com.company.attendance.entity.Notification;
+import com.company.attendance.enums.NotificationType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,6 +24,20 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     long countByRecipientUserIdAndReadFalse(Long recipientUserId);
 
     Optional<Notification> findByIdAndRecipientUserId(Long id, Long recipientUserId);
+
+    /**
+     * Whether this person has already been told this, about this day.
+     *
+     * <p>The reminder sweep runs every few minutes and the condition it looks
+     * for -- no punch-in -- stays true until the person acts. Without a record
+     * of what has been sent, somebody who is genuinely away would be mailed
+     * every quarter of an hour until their shift ended. The notification row
+     * is that record; it carries the date it is about, so a restart does not
+     * start the chasing over.
+     */
+    boolean existsByRecipientUserIdAndTypeAndEntityId(Long recipientUserId,
+                                                      NotificationType type,
+                                                      String entityId);
 
     /**
      * Marks everything unread as read in one statement.

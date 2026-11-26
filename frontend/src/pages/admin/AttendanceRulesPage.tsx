@@ -83,6 +83,7 @@ const asHours = (minutes: number): string => {
   if (!Number.isFinite(minutes) || minutes <= 0) return '—';
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
+  if (h === 0) return `${m}m`;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 };
 
@@ -193,6 +194,35 @@ export const AttendanceRulesPage = () => {
           value={form.wfhMinNoticeDays}
           onChange={(next) => set('wfhMinNoticeDays', next)}
         />
+      </Section>
+
+      <Section
+        title="Missing punch-in"
+        description="Nobody is emailed unless this is on. Each person is reminded once a day, at most."
+      >
+        <div className="sm:col-span-2">
+          <ToggleField
+            label="Email anyone who has not punched in"
+            hint="Sent only to the person themselves, and only on a working day they are not on leave, on holiday or on a weekly off."
+            checked={form.punchInReminderEnabled}
+            onChange={(next) => set('punchInReminderEnabled', next)}
+          />
+        </div>
+        <NumberField
+          label="Send after"
+          unit={`minutes past shift start (${asHours(form.punchInReminderDelayMinutes)})`}
+          hint="Counted from each person's own shift, so a 08:30 and a 10:00 start are both reminded at the same point in their morning."
+          value={form.punchInReminderDelayMinutes}
+          onChange={(next) => set('punchInReminderDelayMinutes', next)}
+        />
+        <div className="self-end">
+          {form.punchInReminderEnabled && form.punchInReminderDelayMinutes < form.gracePeriodMinutes ? (
+            <Alert variant="warning">
+              This is inside the {form.gracePeriodMinutes}-minute grace period, so people will be
+              chased for arriving on time.
+            </Alert>
+          ) : null}
+        </div>
       </Section>
 
       <Section

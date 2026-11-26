@@ -31,6 +31,7 @@ export const NOTIFICATION_ICON: Record<string, string> = {
   REGULARIZATION_REJECTED: 'cancel',
   WFH_REJECTED: 'cancel',
   REQUEST_WITHDRAWN: 'undo',
+  ATTENDANCE_PUNCH_IN_REMINDER: 'alarm',
   ATTENDANCE_MISSING_PUNCH_OUT: 'timer_off',
   ATTENDANCE_MARKED_ABSENT: 'person_off',
   SYSTEM_ANNOUNCEMENT: 'campaign',

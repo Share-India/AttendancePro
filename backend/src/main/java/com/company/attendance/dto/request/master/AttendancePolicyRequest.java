@@ -77,6 +77,12 @@ public record AttendancePolicyRequest(
 
         @Min(value = 0, message = "Notice cannot be negative")
         @Max(value = 90, message = "Notice beyond three months is not notice")
-        short wfhMinNoticeDays
+        short wfhMinNoticeDays,
+
+        boolean punchInReminderEnabled,
+
+        @Min(value = 0, message = "The reminder cannot go out before the shift starts")
+        @Max(value = 480, message = "A reminder eight hours into the shift is not a reminder")
+        short punchInReminderDelayMinutes
 ) {
 }

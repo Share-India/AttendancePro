@@ -82,6 +82,9 @@ public class AttendancePolicyAdminService {
         policy.setMaxWfhDaysPerMonth(request.maxWfhDaysPerMonth());
         policy.setWfhMinNoticeDays(request.wfhMinNoticeDays());
 
+        policy.setPunchInReminderEnabled(request.punchInReminderEnabled());
+        policy.setPunchInReminderDelayMinutes(request.punchInReminderDelayMinutes());
+
         AttendancePolicy saved = policyRepository.save(policy);
 
         // POLICY_CHANGE rather than UPDATE, and with both sides recorded.
@@ -153,6 +156,8 @@ public class AttendancePolicyAdminService {
         values.put("maxRegularizationsPerMonth", policy.getMaxRegularizationsPerMonth());
         values.put("maxWfhDaysPerMonth", policy.getMaxWfhDaysPerMonth());
         values.put("wfhMinNoticeDays", policy.getWfhMinNoticeDays());
+        values.put("punchInReminderEnabled", policy.isPunchInReminderEnabled());
+        values.put("punchInReminderDelayMinutes", policy.getPunchInReminderDelayMinutes());
         return values;
     }
 }

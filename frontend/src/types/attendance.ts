@@ -205,6 +205,11 @@ export interface AttendancePolicy {
   maxWfhDaysPerMonth: number;
   wfhMinNoticeDays: number;
 
+  /** Whether anyone is emailed for a missing punch-in. */
+  punchInReminderEnabled: boolean;
+  /** Minutes after each person's own shift start, not a clock time. */
+  punchInReminderDelayMinutes: number;
+
   active: boolean;
   /** True when shifts set their own day lengths, making the thresholds here a fallback. */
   shiftOverridesDayLengths: boolean;

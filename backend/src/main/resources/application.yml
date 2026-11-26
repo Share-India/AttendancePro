@@ -148,6 +148,18 @@ app:
     # it rather than trusting it.
     base-url: ${APP_BASE_URL:http://localhost:5173}
 
+  reminders:
+    punch-in:
+      # Whether the timer runs at all. This is the deployment's say; whether
+      # anybody is actually mailed is the attendance policy's, and that is off
+      # until HR turns it on. Both must be on, so neither a stray property nor
+      # a restored database backup can start mailing forty-six people.
+      #
+      # Off here by default so a local run and the test suite have no timer at
+      # all -- a scheduler firing during tests makes them depend on how long
+      # they take, which is the slowest kind of flake to find.
+      scheduled: ${PUNCH_IN_REMINDER_SCHEDULED:false}
+
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
     allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS

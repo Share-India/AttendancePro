@@ -77,6 +77,26 @@ public class AttendancePolicy extends BaseEntity {
     @Column(name = "auto_punch_out_enabled", nullable = false)
     private boolean autoPunchOutEnabled = false;
 
+    /**
+     * Whether anyone is chased for a missing punch-in.
+     *
+     * <p>Off by default and left off by the migration that added it. The
+     * reminder reaches every active employee at once, so turning it on is a
+     * decision somebody makes, not a side effect of a deploy.
+     */
+    @Column(name = "punch_in_reminder_enabled", nullable = false)
+    private boolean punchInReminderEnabled = false;
+
+    /**
+     * How long after a person's own shift starts the reminder goes.
+     *
+     * <p>Measured from their shift, not the clock: a company whose shifts
+     * start at 08:30, 09:30 and 10:00 has no single time that is right for
+     * all three.
+     */
+    @Column(name = "punch_in_reminder_delay_minutes", nullable = false)
+    private short punchInReminderDelayMinutes = 30;
+
     @Column(name = "regularization_window_days", nullable = false)
     private short regularizationWindowDays = 7;
 

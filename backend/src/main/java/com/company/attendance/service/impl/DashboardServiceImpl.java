@@ -18,15 +18,15 @@ import com.company.attendance.repository.AttendanceRegularizationRepository;
 import com.company.attendance.repository.AttendanceRepository;
 import com.company.attendance.repository.EmployeeRepository;
 import com.company.attendance.repository.EmployeeShiftRepository;
-import com.company.attendance.service.ShiftResolutionService;
 import com.company.attendance.repository.LeaveRequestDayRepository;
 import com.company.attendance.repository.LeaveRequestRepository;
-import com.company.attendance.repository.WfhRequestDayRepository;
 import com.company.attendance.repository.WorkFromHomeRequestRepository;
 import com.company.attendance.security.AccessScopeResolver;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.CalendarService;
 import com.company.attendance.service.DashboardService;
+import com.company.attendance.service.DayStateResolver;
+import com.company.attendance.service.DayStateResolver.MemberDay;
 import com.company.attendance.service.RequestApproverResolver;
 import com.company.attendance.util.DateTimeUtils;
 import org.springframework.data.domain.Page;
@@ -78,40 +78,37 @@ public class DashboardServiceImpl implements DashboardService {
 
     private final EmployeeRepository employeeRepository;
     private final EmployeeShiftRepository employeeShiftRepository;
-    private final ShiftResolutionService shiftResolutionService;
     private final AttendanceRepository attendanceRepository;
     private final LeaveRequestDayRepository leaveRequestDayRepository;
     private final LeaveRequestRepository leaveRequestRepository;
-    private final WfhRequestDayRepository wfhRequestDayRepository;
     private final AttendanceRegularizationRepository regularizationRepository;
     private final WorkFromHomeRequestRepository wfhRepository;
     private final CalendarService calendarService;
     private final AccessScopeResolver accessScopeResolver;
+    private final DayStateResolver dayStateResolver;
     private final RequestApproverResolver approverResolver;
 
     public DashboardServiceImpl(EmployeeRepository employeeRepository,
                                 EmployeeShiftRepository employeeShiftRepository,
-                                 ShiftResolutionService shiftResolutionService,
                                 AttendanceRepository attendanceRepository,
                                 LeaveRequestDayRepository leaveRequestDayRepository,
                                 LeaveRequestRepository leaveRequestRepository,
-                                WfhRequestDayRepository wfhRequestDayRepository,
                                 AttendanceRegularizationRepository regularizationRepository,
                                 WorkFromHomeRequestRepository wfhRepository,
                                 CalendarService calendarService,
                                 AccessScopeResolver accessScopeResolver,
+                                DayStateResolver dayStateResolver,
                                 RequestApproverResolver approverResolver) {
         this.employeeRepository = employeeRepository;
         this.employeeShiftRepository = employeeShiftRepository;
-        this.shiftResolutionService = shiftResolutionService;
         this.attendanceRepository = attendanceRepository;
         this.leaveRequestDayRepository = leaveRequestDayRepository;
         this.leaveRequestRepository = leaveRequestRepository;
-        this.wfhRequestDayRepository = wfhRequestDayRepository;
         this.regularizationRepository = regularizationRepository;
         this.wfhRepository = wfhRepository;
         this.calendarService = calendarService;
         this.accessScopeResolver = accessScopeResolver;
+        this.dayStateResolver = dayStateResolver;
         this.approverResolver = approverResolver;
     }
 
@@ -130,7 +127,7 @@ public class DashboardServiceImpl implements DashboardService {
         LocalDate day = date != null ? date : LocalDate.now();
 
         List<Employee> population = population(principal, scope, departmentId, officeId);
-        List<MemberDay> days = resolveDays(population, day);
+        List<MemberDay> days = dayStateResolver.resolveDays(population, day);
 
         Map<DayState, Integer> counts = countByState(days);
 
@@ -195,7 +192,7 @@ public class DashboardServiceImpl implements DashboardService {
         LocalDate day = date != null ? date : LocalDate.now();
 
         List<Employee> population = population(principal, scope, departmentId, officeId);
-        List<MemberDay> days = resolveDays(population, day);
+        List<MemberDay> days = dayStateResolver.resolveDays(population, day);
 
         DayState wanted = parseDayState(dayState);
         String needle = search == null ? null : search.trim().toLowerCase(Locale.ROOT);
@@ -271,7 +268,7 @@ public class DashboardServiceImpl implements DashboardService {
             int late = 0;
 
             for (Employee employee : population) {
-                if (!wasEmployedOn(employee, day)) {
+                if (!dayStateResolver.wasEmployedOn(employee, day)) {
                     continue;
                 }
                 DayType dayType = dayTypes.getOrDefault(employee.getId(), DayType.WORKING);
@@ -308,161 +305,6 @@ public class DashboardServiceImpl implements DashboardService {
         }
 
         return new AttendanceTrendResponse(from, to, points);
-    }
-
-    // -----------------------------------------------------------------
-    // The shared resolution
-    // -----------------------------------------------------------------
-
-    /** One employee's day, with everything needed to classify it. */
-    private record MemberDay(Employee employee,
-                             LocalDate date,
-                             DayState state,
-                             Attendance attendance,
-                             Shift shift,
-                             LeaveRequestDay leaveDay) {
-    }
-
-    /**
-     * Whether this person was on the payroll on this date.
-     *
-     * <p>Without it, someone who joins next month is reported absent today, and
-     * a four-week trend marks every new joiner absent for the weeks before they
-     * started — which is how a chart ends up a wall of red on a system that has
-     * simply not been running very long.
-     */
-    private boolean wasEmployedOn(Employee employee, LocalDate date) {
-        if (employee.getJoiningDate() != null && date.isBefore(employee.getJoiningDate())) {
-            return false;
-        }
-        return employee.getExitDate() == null || !date.isAfter(employee.getExitDate());
-    }
-
-    /**
-     * Classifies a whole population for one date in a fixed number of queries.
-     */
-    private List<MemberDay> resolveDays(List<Employee> population, LocalDate date) {
-        if (population.isEmpty()) {
-            return List.of();
-        }
-
-        Set<Long> ids = population.stream().map(Employee::getId).collect(Collectors.toSet());
-
-        Map<Long, DayType> dayTypes = calendarService.resolveDayTypes(population, date);
-
-        Map<Long, Attendance> attendance =
-                attendanceRepository.findForEmployeesOn(ids, date).stream()
-                        .collect(Collectors.toMap(a -> a.getEmployee().getId(), Function.identity(),
-                                (first, second) -> first));
-
-        Map<Long, LeaveRequestDay> leave =
-                leaveRequestDayRepository.findApprovedForEmployeesOn(ids, date).stream()
-                        .collect(Collectors.toMap(LeaveRequestDay::getEmployeeId, Function.identity(),
-                                (first, second) -> first));
-
-        Set<Long> wfhApproved = new HashSet<>(
-                wfhRequestDayRepository.findApprovedEmployeeIdsOn(ids, date));
-
-        Map<Long, Shift> shifts = shiftsFor(population, date);
-
-        Instant now = Instant.now();
-        List<MemberDay> result = new ArrayList<>(population.size());
-
-        for (Employee employee : population) {
-            if (!wasEmployedOn(employee, date)) {
-                continue;
-            }
-            Attendance row = attendance.get(employee.getId());
-            Shift shift = shifts.get(employee.getId());
-            LeaveRequestDay leaveDay = leave.get(employee.getId());
-            DayType dayType = dayTypes.getOrDefault(employee.getId(), DayType.WORKING);
-
-            DayState state = classify(employee, date, now, dayType, row, leaveDay,
-                    wfhApproved.contains(employee.getId()), shift);
-
-            result.add(new MemberDay(employee, date, state, row, shift, leaveDay));
-        }
-        return result;
-    }
-
-    /**
-     * Where one person stands.
-     *
-     * <p>Order matters. A punch outranks everything: someone who worked a
-     * holiday worked it, and reporting them as on holiday would erase the hours
-     * they are owed. Only after that do the reasons for being away apply.
-     */
-    private DayState classify(Employee employee,
-                              LocalDate date,
-                              Instant now,
-                              DayType dayType,
-                              Attendance attendance,
-                              LeaveRequestDay leaveDay,
-                              boolean wfhApproved,
-                              Shift shift) {
-
-        if (attendance != null && attendance.getPunchInTime() != null) {
-            boolean workedFromHome = wfhApproved
-                    || (attendance.getWorkMode() != null && "WFH".equals(attendance.getWorkMode().name()));
-            return workedFromHome ? DayState.WORKING_FROM_HOME : DayState.PRESENT;
-        }
-
-        if (leaveDay != null) {
-            return DayState.ON_LEAVE;
-        }
-        if (dayType == DayType.HOLIDAY) {
-            return DayState.HOLIDAY;
-        }
-        if (dayType == DayType.WEEKLY_OFF) {
-            return DayState.WEEKLY_OFF;
-        }
-
-        // A working day with nobody home. Whether that is a problem depends on
-        // whether the day is over — calling someone absent at 09:05 turns a
-        // clock reading into an accusation.
-        // Before go-live there was no punch to miss, so the day is reported
-        // as nothing-expected rather than absent. NOT_YET_IN rather than a new
-        // enum value: it already means "no attendance, not a failure", and the
-        // counts that matter treat it the same way.
-        if (!calendarService.isTracked(date)) {
-            return DayState.NOT_YET_IN;
-        }
-        return hasShiftEnded(employee, date, now, shift) ? DayState.ABSENT : DayState.NOT_YET_IN;
-    }
-
-    /**
-     * Whether the chance to turn up has passed.
-     *
-     * <p>Resolved in the employee's own office timezone, so a Singapore office
-     * is not marked absent because it is still morning at head office. With no
-     * shift on record the day is treated as over once the date itself has
-     * passed — the safer of the two errors, since it never accuses anyone whose
-     * day is still running.
-     */
-    private boolean hasShiftEnded(Employee employee, LocalDate date, Instant now, Shift shift) {
-        ZoneId zone = DateTimeUtils.zoneOf(employee);
-        if (date.isBefore(DateTimeUtils.localDate(now, zone))) {
-            return true;
-        }
-        if (shift == null) {
-            return false;
-        }
-        return now.isAfter(DateTimeUtils.shiftEndInstant(date, zone, shift));
-    }
-
-    private Map<Long, Shift> shiftsFor(Collection<Employee> population, LocalDate date) {
-        // Per employee; the roster is paginated and a team is small, but an
-        // org-wide call would be N queries. Kept explicit here so the cost is
-        // visible rather than hidden behind a lazy association.
-        //
-        // Entities rather than ids because a weekday shift override can be
-        // scoped to a department or an office, which an id alone cannot answer.
-        Map<Long, Shift> shifts = new HashMap<>();
-        for (Employee employee : population) {
-            shiftResolutionService.resolve(employee, date)
-                    .ifPresent(shift -> shifts.put(employee.getId(), shift));
-        }
-        return shifts;
     }
 
     // -----------------------------------------------------------------

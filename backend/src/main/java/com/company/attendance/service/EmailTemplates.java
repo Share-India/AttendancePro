@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 /**
  * The wording and markup of the mail this application sends.
  *
- * <p>Hand-built strings rather than a template engine. There are four messages,
+ * <p>Hand-built strings rather than a template engine. There are five messages,
  * they share one shell, and adding Thymeleaf to render them would mean a
  * dependency, a resource path and a second place to look when the wording is
  * wrong. If this grows past a handful, move it.
@@ -117,6 +117,52 @@ public class EmailTemplates {
                         button("Open Attendance Pro", link)));
 
         return new Message(title, html, text);
+    }
+
+    /**
+     * Nobody has punched in for this person and nothing excuses it.
+     *
+     * <p>The wording assumes forgetfulness rather than absence, because that
+     * is what it usually is and because the system cannot tell the two apart.
+     * It is sent while the day can still be fixed by punching in, so it asks
+     * for that and nothing else -- no warning, no mention of pay, and no copy
+     * to a manager. Somebody genuinely away has a manager who knows already.
+     */
+    public Message punchInReminder(String firstName, String shiftStart, String link) {
+        String subject = "You have not punched in today";
+
+        String text = """
+                Hello %s,
+
+                There is no punch-in recorded against your attendance today.
+                Your shift started at %s.
+
+                If you are at work, please punch in now -- the time is taken
+                from when you punch, so a late punch shortens the day it
+                records.
+
+                If you are away today, apply for leave or ask your manager to
+                correct the day for you.
+
+                Punch in here:
+                %s
+                """.formatted(firstName, shiftStart, link);
+
+        String html = shell(subject, """
+                <p style="margin:0 0 16px">Hello %s,</p>
+                <p style="margin:0 0 16px">There is no punch-in recorded against your
+                   attendance today. Your shift started at
+                   <strong>%s</strong>.</p>
+                <p style="margin:0 0 16px">If you are at work, please punch in now &mdash;
+                   the time is taken from when you punch, so a late punch shortens the
+                   day it records.</p>
+                %s
+                <p style="margin:0 0 16px;font-size:14px;color:#5b6472">If you are away
+                   today, apply for leave or ask your manager to correct the day for
+                   you.</p>
+                """.formatted(firstName, shiftStart, button("Punch in", link)));
+
+        return new Message(subject, html, text);
     }
 
     /**
