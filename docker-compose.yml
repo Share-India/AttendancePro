@@ -44,6 +44,13 @@ services:
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
       COMPANY_TIMEZONE: ${COMPANY_TIMEZONE:-Asia/Kolkata}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      # The punch-in reminder's timer. False unless a deployment asks for it;
+      # whether anybody is actually mailed is still the attendance policy's
+      # to say. A value in .env does nothing unless it is listed here —
+      # Compose passes only what a service names, and the symptom of leaving
+      # it out is a switch that reads as on everywhere except in the process
+      # that would act on it.
+      PUNCH_IN_REMINDER_SCHEDULED: ${PUNCH_IN_REMINDER_SCHEDULED:-false}
     networks: [attendance]
 
   frontend:

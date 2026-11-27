@@ -68,6 +68,12 @@ services:
       # container's own address.
       APP_BASE_URL: ${APP_BASE_URL:-https://${DOMAIN}}
       SETUP_TOKEN_VALIDITY_HOURS: ${SETUP_TOKEN_VALIDITY_HOURS:-72}
+      # Restated from the base file so the two switches that decide whether
+      # anybody is mailed about a missing punch are both visible where the
+      # rest of the mail settings are. This one runs the timer; the other is
+      # punch_in_reminder_enabled on the attendance policy, set from the
+      # application. Both must be on.
+      PUNCH_IN_REMINDER_SCHEDULED: ${PUNCH_IN_REMINDER_SCHEDULED:-false}
       # bcrypt strength is not settable here: application.yml fixes it at 12,
       # which is what the validator wants anyway. An env var for it would
       # read like a knob that works.
