@@ -149,6 +149,13 @@ decision rather than quietly coming up wide open.
 The backend image declares its own `HEALTHCHECK` against liveness, so
 `docker compose ps` reports honestly.
 
+"Public" here means the application asks for no token, not that the path is
+reachable from the internet. The reverse proxy forwards only `/api/`, so these
+are answerable from inside the container and from nothing else. See
+[Verifying a deploy](08-lightsail-deployment.md#verifying-a-deploy) for the
+check that actually tests the backend rather than whatever else is listening
+on the host.
+
 ## Backups
 
 The only stateful thing is MySQL.

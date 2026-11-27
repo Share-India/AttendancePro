@@ -329,6 +329,32 @@ mid-punch. Fourteen days retained; the snapshots cover anything older.
 **Test a restore before you need one.** A backup nobody has restored is a
 hypothesis.
 
+### Verifying a deploy
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+    exec -T backend wget -qO- localhost:8080/actuator/health/liveness
+curl -s -o /dev/null -w '%{http_code}\n' https://attendance.shareindiainsurance.com/
+```
+
+The first says the container is up, the second that the application inside it
+is serving, the third that the whole chain — DNS, Cloudflare, nginx, backend —
+is intact. `{"status":"UP"}` and `200` are the answers.
+
+**The `exec` is not decoration.** The backend publishes no port to the host:
+`docker inspect` shows `"8080/tcp": null`, because nginx reaches it over the
+compose network. The host's own port 8080 belongs to a different application
+sharing this instance, so `curl localhost:8080/actuator/health/liveness` run
+on the host answers from that application instead — and its 404 reads exactly
+like a backend that failed to start. A deploy has been declared broken on that
+basis. Check from inside the container, or through the public URL.
+
+There is no public route to `/actuator` at all: nginx forwards only `/api/`,
+so an actuator path reaches the application as `/api/actuator/...`, which does
+not match the permitted `/actuator/health/**` and is refused as `TOKEN_MISSING`.
+That is the intended posture, not a fault.
+
 ### Logs
 
 ```bash
