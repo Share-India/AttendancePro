@@ -4,6 +4,8 @@ import com.company.attendance.config.MailProperties;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -40,6 +42,17 @@ import java.nio.charset.StandardCharsets;
 public class EmailService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
+
+    /**
+     * The corporate mark, carried inside every message.
+     *
+     * <p>A copy of {@code frontend/public/brand/shareindia-mark.png}. It is
+     * duplicated rather than shared because the API and the site are separate
+     * containers in production and neither can read the other's files — and a
+     * second copy of a 4 KB logo is a cheaper problem than a build step whose
+     * only job is to move one.
+     */
+    private static final Resource LOGO = new ClassPathResource("mail/shareindia-mark.png");
 
     private final JavaMailSender mailSender;
     private final MailProperties mailProperties;
@@ -85,6 +98,7 @@ public class EmailService {
             // Plain text first, HTML second — that order is what makes the
             // HTML the preferred alternative rather than the fallback.
             helper.setText(text, html);
+            attachLogo(helper);
 
             mailSender.send(message);
             log.info("Sent '{}' to {}", subject, to);
@@ -93,5 +107,26 @@ public class EmailService {
             // mail is about has already happened and committed.
             log.error("Could not send '{}' to {}: {}", subject, to, e.getMessage());
         }
+    }
+
+    /**
+     * Adds the logo the HTML refers to by content id.
+     *
+     * <p>Must come after {@code setText}: the helper builds the related
+     * multipart around the body it already has, and an inline part added
+     * before there is a body is dropped without an error.
+     *
+     * <p>A missing file is logged and skipped rather than thrown. The logo is
+     * decoration; a mail that arrives with a broken image is a blemish, while
+     * one that is never sent because a resource was left out of a build is a
+     * person who cannot set their password.
+     */
+    private void attachLogo(MimeMessageHelper helper) throws jakarta.mail.MessagingException {
+        if (!LOGO.exists()) {
+            log.warn("No {} on the classpath; mail will be sent without the logo",
+                    LOGO.getDescription());
+            return;
+        }
+        helper.addInline(EmailTemplates.LOGO_CID, LOGO, "image/png");
     }
 }

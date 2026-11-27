@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static com.company.attendance.service.EmailTemplates.LOGO_CID;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -94,6 +96,60 @@ class EmailTemplatesTest {
     }
 
     @Test
+    @DisplayName("the reminder names the shift and says what to do instead")
+    void punchInReminder() throws Exception {
+        var message = templates.punchInReminder("Rohit", "9:30 AM",
+                "https://attendance.shareindiainsurance.com/dashboard");
+
+        save("05-punch-in-reminder", message);
+
+        assertThat(message.subject()).isEqualTo("You have not punched in today");
+        for (String body : new String[]{message.html(), message.text()}) {
+            assertThat(body).contains("Rohit").contains("9:30 AM");
+            // Somebody who is genuinely away must be told what to do, or the
+            // mail reads as an accusation with no way to answer it.
+            assertThat(body).contains("apply for leave");
+        }
+        // No warning, no manager, nothing about pay. See the template's note.
+        assertThat(message.text()).doesNotContainIgnoringCase("salary");
+        assertThat(message.text()).doesNotContainIgnoringCase("deduct");
+    }
+
+    @Test
+    @DisplayName("every message carries the company's name and its mark")
+    void everyMessageIsBranded() {
+        var all = new EmailTemplates.Message[]{
+                templates.passwordSetup("Asha", "S0107", "https://x/y", "72 hours", false),
+                templates.approvalRequested("Vidhi", "Title", "Body", "https://x/y"),
+                templates.requestDecided("Asha", "Title", "Body", "https://x/y"),
+                templates.punchInReminder("Rohit", "9:30 AM", "https://x/y"),
+        };
+
+        for (EmailTemplates.Message message : all) {
+            assertThat(message.html()).contains("Share India Insurance Brokers");
+            // The plain-text copy has no shell, so it is the one that loses a
+            // sign-off without anybody noticing.
+            assertThat(message.text()).contains("Share India Insurance Brokers");
+
+            // Referenced by content id, never by URL: a remote image is
+            // blocked by default in Outlook and most webmail.
+            assertThat(message.html()).contains("src=\"cid:" + LOGO_CID + "\"");
+            assertThat(message.html()).doesNotContain("src=\"http");
+        }
+    }
+
+    @Test
+    @DisplayName("the mark the mail refers to is actually on the classpath")
+    void theMarkIsShipped() {
+        // The reference and the file are in different source trees, so one can
+        // be moved without the other. The symptom would be every mail arriving
+        // with a broken image, which no unit test on the markup alone catches.
+        assertThat(EmailTemplatesTest.class.getResource("/mail/shareindia-mark.png"))
+                .as("mail/shareindia-mark.png on the classpath")
+                .isNotNull();
+    }
+
+    @Test
     @DisplayName("a missing body does not render the string 'null' at somebody")
     void handlesAMissingBody() {
         var message = templates.approvalRequested("Vidhi", "Something needs you", null,
@@ -103,9 +159,21 @@ class EmailTemplatesTest {
         assertThat(message.text()).doesNotContain("null");
     }
 
+    /**
+     * Writes the rendering out, with the logo pointed at a file.
+     *
+     * <p>A browser does not resolve {@code cid:}, which is what the real
+     * message uses, so a sample saved verbatim shows a broken image and the
+     * reviewer concludes the mail is broken. The substitution is the one
+     * difference between these files and what is sent.
+     */
     private void save(String name, EmailTemplates.Message message) throws Exception {
         Files.createDirectories(SAMPLES);
-        Files.writeString(SAMPLES.resolve(name + ".html"), message.html());
+        Files.copy(Path.of("src", "main", "resources", "mail", "shareindia-mark.png"),
+                SAMPLES.resolve("shareindia-mark.png"), REPLACE_EXISTING);
+
+        Files.writeString(SAMPLES.resolve(name + ".html"),
+                message.html().replace("cid:" + LOGO_CID, "shareindia-mark.png"));
         Files.writeString(SAMPLES.resolve(name + ".txt"),
                 "Subject: " + message.subject() + "\n\n" + message.text());
     }

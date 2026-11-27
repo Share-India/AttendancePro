@@ -24,6 +24,21 @@ public class EmailTemplates {
 
     private static final String ACCENT = "#00236f";
 
+    /** Who the mail is from, as a person reads it rather than as an address. */
+    private static final String COMPANY = "Share India Insurance Brokers";
+
+    /**
+     * The content id the corporate mark is referenced by.
+     *
+     * <p>A {@code cid:} reference rather than a URL on purpose. Outlook and
+     * most webmail block remote images from a sender who is not already
+     * trusted, and a logo that is blocked by default is not branding — it is
+     * a grey box with a broken-image icon in it. The bytes travel with the
+     * message instead: {@link EmailService} attaches them, which is why this
+     * constant is not private.
+     */
+    public static final String LOGO_CID = "shareindia-mark";
+
     /** A new joiner, or anyone whose password an administrator has reset. */
     public Message passwordSetup(String firstName, String employeeCode, String link,
                                  String validity, boolean isReset) {
@@ -68,7 +83,7 @@ public class EmailTemplates {
                         button(isReset ? "Set a new password" : "Set your password", link),
                         employeeCode, validity));
 
-        return new Message(subject, html, text);
+        return message(subject, html, text);
     }
 
     /** Something is waiting on this person to decide. */
@@ -92,7 +107,7 @@ public class EmailTemplates {
                 """.formatted(firstName, title, body == null ? "" : body,
                         button("Review the request", link)));
 
-        return new Message(title, html, text);
+        return message(title, html, text);
     }
 
     /** This person's own request was decided. */
@@ -116,7 +131,7 @@ public class EmailTemplates {
                 """.formatted(firstName, title, body == null ? "" : body,
                         button("Open Attendance Pro", link)));
 
-        return new Message(title, html, text);
+        return message(title, html, text);
     }
 
     /**
@@ -162,7 +177,28 @@ public class EmailTemplates {
                    you.</p>
                 """.formatted(firstName, shiftStart, button("Punch in", link)));
 
-        return new Message(subject, html, text);
+        return message(subject, html, text);
+    }
+
+    /**
+     * Every message, with the sender's own sign-off added to the plain text.
+     *
+     * <p>The HTML gets its footer from {@link #shell}; the plain-text copy has
+     * no shell, so without this it would arrive as an unsigned block of text
+     * from an address nobody recognises. The trimming matters: each body is a
+     * text block ending in a newline, and two separators' worth of blank line
+     * reads as a formatting mistake.
+     */
+    private Message message(String subject, String html, String text) {
+        String signed = text.stripTrailing() + """
+
+
+                --
+                Attendance Pro — %s
+                Sent automatically. Please do not reply to this message.
+                """.formatted(COMPANY);
+
+        return new Message(subject, html, signed);
     }
 
     /**
@@ -193,18 +229,40 @@ public class EmailTemplates {
                  color:#1b1f27;font-size:16px;line-height:1.5">
               <table role="presentation" cellpadding="0" cellspacing="0"
                      style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:10px">
-                <tr><td style="padding:28px 32px 8px">
-                  <p style="margin:0 0 20px;font-size:18px;font-weight:700;color:%s">
-                     Attendance Pro</p>
+                <tr><td style="padding:26px 32px 8px">
+                  <!--
+                    The mark and the name are two cells of one table, not an
+                    inline-block pair. Outlook renders through Word, which
+                    drops vertical-align on anything that is not a table cell,
+                    and the logo would sit on the text's baseline instead of
+                    beside it.
+                  -->
+                  <table role="presentation" cellpadding="0" cellspacing="0"
+                         style="margin:0 0 22px">
+                    <tr>
+                      <td style="padding-right:12px;vertical-align:middle">
+                        <img src="cid:%s" width="40" height="40"
+                             alt="Share India"
+                             style="display:block;width:40px;height:40px;border:0">
+                      </td>
+                      <td style="vertical-align:middle">
+                        <div style="font-size:16px;font-weight:700;line-height:1.25;color:%s">
+                           %s</div>
+                        <div style="font-size:11px;letter-spacing:.08em;color:#8a919e;
+                             text-transform:uppercase">Attendance Pro</div>
+                      </td>
+                    </tr>
+                  </table>
                   <h1 style="margin:0 0 20px;font-size:21px;line-height:1.3">%s</h1>
                 </td></tr>
                 <tr><td style="padding:0 32px 28px">%s</td></tr>
               </table>
               <p style="max-width:560px;margin:16px auto 0;font-size:12px;color:#8a919e;
                  text-align:center">
-                 Sent by Attendance Pro. Please do not reply to this message.</p>
+                 Sent by Attendance Pro for %s.<br>
+                 Please do not reply to this message.</p>
             </body></html>
-            """.formatted(ACCENT, heading, content);
+            """.formatted(LOGO_CID, ACCENT, COMPANY, heading, content, COMPANY);
     }
 
     /** A rendered message, ready for {@link EmailService#send}. */
