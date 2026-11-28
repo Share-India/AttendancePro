@@ -11,6 +11,8 @@ export interface LeaveTypeOption {
   maxConsecutiveDays: number | null;
   exemptFromNotice: boolean;
   allowBackdated: boolean;
+  /** Earliest date this type may be applied for, as the server computes it. */
+  earliestApplicableDate: string;
   applicableGender: string;
   countsHolidaysWeeklyOffs: boolean;
   allowNegativeBalance: boolean;

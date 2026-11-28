@@ -15,6 +15,8 @@ public record LeaveTypeResponse(
         Short maxConsecutiveDays,
         boolean exemptFromNotice,
         boolean allowBackdated,
+        /** The earliest date this type may be applied for, today or a month start. */
+        java.time.LocalDate earliestApplicableDate,
         String applicableGender,
         /** Whether holidays inside the range are charged. Shown so the count is explainable. */
         boolean countsHolidaysWeeklyOffs,

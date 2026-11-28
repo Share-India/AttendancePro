@@ -38,6 +38,10 @@ public class PayrollRulesService {
 
     static final String SETTING_RULES_FROM = "payroll.rules_effective_date";
     static final String SETTING_SATURDAY_VALUE = "payroll.saturday_day_value";
+    static final String SETTING_BACKDATED_GRACE = "payroll.backdated_leave_grace_days";
+
+    /** Days into a new month that the previous one still accepts backdated leave. */
+    private static final int DEFAULT_BACKDATED_GRACE_DAYS = 5;
 
     /** Share India's short Saturday, when the setting is missing or unreadable. */
     private static final BigDecimal DEFAULT_SATURDAY_VALUE = new BigDecimal("0.5");
@@ -117,6 +121,30 @@ public class PayrollRulesService {
         }
     }
 
+    /**
+     * The earliest date somebody may apply for leave against.
+     *
+     * <p>The 1st of the current month, or the 1st of the previous month while
+     * that one is still open. The salary sheet recomputes past months every
+     * time it runs — absence is inferred, never stored — so an approved
+     * backdated leave rewrites the payable figure for whatever month it lands
+     * in. Without a floor, a leave backdated to April would change a sheet
+     * that was paid in May.
+     *
+     * <p>Nothing in this system knows when payroll actually runs, so the
+     * grace setting stands in for it: for that many days into a new month,
+     * the month before is still reachable.
+     */
+    @Transactional(readOnly = true)
+    public LocalDate earliestBackdatedLeaveDate(LocalDate today) {
+        LocalDate monthStart = today.withDayOfMonth(1);
+        int grace = settingInt(SETTING_BACKDATED_GRACE, DEFAULT_BACKDATED_GRACE_DAYS);
+
+        return grace > 0 && today.getDayOfMonth() <= grace
+                ? monthStart.minusMonths(1)
+                : monthStart;
+    }
+
     @Transactional(readOnly = true)
     public Rules current() {
         AttendancePolicy policy = attendancePolicyRepository
@@ -153,6 +181,22 @@ public class PayrollRulesService {
                     }
                 })
                 .orElse(null);
+    }
+
+    private int settingInt(String key, int fallback) {
+        return companySettingRepository.findBySettingKey(key)
+                .map(CompanySetting::getSettingValue)
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> {
+                    try {
+                        return Integer.parseInt(value.trim());
+                    } catch (NumberFormatException e) {
+                        log.warn("{} is not a number: '{}'. Using {} instead.",
+                                key, value, fallback);
+                        return fallback;
+                    }
+                })
+                .orElse(fallback);
     }
 
     private BigDecimal settingDecimal(String key, BigDecimal fallback) {

@@ -36,6 +36,7 @@ import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.LeaveApprovalChainService;
 import com.company.attendance.service.LeaveBalanceService;
 import com.company.attendance.service.LeaveDayExpansionService;
+import com.company.attendance.service.PayrollRulesService;
 import com.company.attendance.service.LeaveService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,10 @@ import java.util.Optional;
 @Service
 public class LeaveServiceImpl implements LeaveService {
 
+    /** "1 November 2026" — a date an employee can read back to HR. */
+    private static final java.time.format.DateTimeFormatter DAY_MONTH_YEAR =
+            java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy");
+
     private static final Logger log = LoggerFactory.getLogger(LeaveServiceImpl.class);
 
     private static final String PERM_VIEW_ALL = "LEAVE_CANCEL_ANY";
@@ -69,6 +74,7 @@ public class LeaveServiceImpl implements LeaveService {
     private final AttendanceRepository attendanceRepository;
     private final LeaveBalanceService leaveBalanceService;
     private final LeaveDayExpansionService dayExpansionService;
+    private final PayrollRulesService payrollRulesService;
     private final LeaveApprovalChainService approvalChainService;
     private final AccessScopeResolver accessScopeResolver;
     private final AuditLogService auditLogService;
@@ -82,6 +88,7 @@ public class LeaveServiceImpl implements LeaveService {
                             AttendanceRepository attendanceRepository,
                             LeaveBalanceService leaveBalanceService,
                             LeaveDayExpansionService dayExpansionService,
+                            PayrollRulesService payrollRulesService,
                             LeaveApprovalChainService approvalChainService,
                             AccessScopeResolver accessScopeResolver,
                             AuditLogService auditLogService,
@@ -94,6 +101,7 @@ public class LeaveServiceImpl implements LeaveService {
         this.attendanceRepository = attendanceRepository;
         this.leaveBalanceService = leaveBalanceService;
         this.dayExpansionService = dayExpansionService;
+        this.payrollRulesService = payrollRulesService;
         this.approvalChainService = approvalChainService;
         this.accessScopeResolver = accessScopeResolver;
         this.auditLogService = auditLogService;
@@ -510,14 +518,36 @@ public class LeaveServiceImpl implements LeaveService {
         }
 
         LocalDate today = LocalDate.now();
+        boolean backdated = request.fromDate().isBefore(today);
 
-        if (request.fromDate().isBefore(today) && !leaveType.isAllowBackdated()) {
+        if (backdated && !leaveType.isAllowBackdated()) {
             throw new BusinessException(ErrorCode.POLICY_VIOLATION,
                     leaveType.getName() + " cannot be applied for retrospectively. "
                             + "Ask HR to record it for you.");
         }
 
-        if (!leaveType.isExemptFromNotice() && leaveType.getMinNoticeDays() > 0) {
+        if (backdated) {
+            // How far back is a payroll question, not a leave one. The salary
+            // sheet recomputes past months every time it runs, so an approved
+            // leave landing in a month that has already been paid would
+            // rewrite a figure somebody has banked.
+            LocalDate earliest = payrollRulesService.earliestBackdatedLeaveDate(today);
+            if (request.fromDate().isBefore(earliest)) {
+                throw new BusinessException(ErrorCode.POLICY_VIOLATION,
+                        "Leave can only be applied for back to "
+                                + earliest.format(DAY_MONTH_YEAR)
+                                + ". Anything earlier is in a month that payroll has closed — "
+                                + "ask HR to record it for you.");
+            }
+        }
+
+        // Notice is something you give before a day, and there is no giving
+        // notice for last Tuesday. Without this the two rules above cancel
+        // each other out: the subtraction below is negative for any past
+        // date, so a type that allows backdating but asks for notice could
+        // never actually be backdated, and refused with a message about
+        // "-3 days notice" that nobody could act on.
+        if (!backdated && !leaveType.isExemptFromNotice() && leaveType.getMinNoticeDays() > 0) {
             long notice = ChronoUnit.DAYS.between(today, request.fromDate());
             if (notice < leaveType.getMinNoticeDays()) {
                 throw new BusinessException(ErrorCode.POLICY_VIOLATION,
@@ -698,8 +728,23 @@ public class LeaveServiceImpl implements LeaveService {
                 type.isPaid(), type.isAllowHalfDay(), type.isRequiresAttachment(),
                 type.getAttachmentRequiredAfterDays(), type.getMinNoticeDays(),
                 type.getMaxConsecutiveDays(), type.isExemptFromNotice(), type.isAllowBackdated(),
+                earliestApplicableDate(type),
                 type.getApplicableGender(), type.isCountsHolidaysWeeklyOffs(),
                 type.isAllowNegativeBalance(), type.getHrApprovalThresholdDays(), type.isActive());
+    }
+
+    /**
+     * The earliest date the picker should offer for this type.
+     *
+     * <p>Sent rather than worked out in the browser: the floor is a payroll
+     * rule with a configurable grace, and a second copy of it in TypeScript
+     * would drift from this one the first time the setting changed.
+     */
+    private LocalDate earliestApplicableDate(LeaveType type) {
+        LocalDate today = LocalDate.now();
+        return type.isAllowBackdated()
+                ? payrollRulesService.earliestBackdatedLeaveDate(today)
+                : today;
     }
 
     private LeaveRequestResponse toResponse(LeaveRequest request, UserPrincipal principal) {

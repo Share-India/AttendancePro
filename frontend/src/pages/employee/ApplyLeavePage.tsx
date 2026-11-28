@@ -226,7 +226,21 @@ export const ApplyLeavePage = () => {
             {Number(selectedBalance.availableDays)} day
             {Number(selectedBalance.availableDays) === 1 ? '' : 's'} available.
             {selectedType.minNoticeDays > 0 && !selectedType.exemptFromNotice && (
-              <> Needs {selectedType.minNoticeDays} day(s) notice.</>
+              <>
+                {' '}
+                Needs {selectedType.minNoticeDays} day(s) notice
+                {selectedType.allowBackdated ? ' for a future date' : ''}.
+              </>
+            )}
+            {/* Said plainly, because the salary sheet tells people an
+                unapplied absence converts back once leave is approved, and
+                this is where they come to do it. */}
+            {selectedType.allowBackdated && (
+              <>
+                {' '}
+                You can apply back to {formatDay(selectedType.earliestApplicableDate)} for a
+                day you have already missed.
+              </>
             )}
             {selectedType.countsHolidaysWeeklyOffs
               ? ' Holidays and weekly offs inside the range are charged.'
@@ -238,7 +252,7 @@ export const ApplyLeavePage = () => {
           <TextField
             label="From"
             type="date"
-            min={selectedType?.allowBackdated ? undefined : isoToday()}
+            min={selectedType?.earliestApplicableDate ?? isoToday()}
             error={errors.fromDate?.message}
             {...register('fromDate', { required: 'Choose a start date' })}
           />
