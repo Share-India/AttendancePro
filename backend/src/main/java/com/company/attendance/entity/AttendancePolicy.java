@@ -48,8 +48,21 @@ public class AttendancePolicy extends BaseEntity {
     @Column(name = "grace_period_minutes", nullable = false)
     private short gracePeriodMinutes = 15;
 
+    /** How much one forgiven early departure covers. Per occasion, not per day. */
     @Column(name = "early_exit_grace_minutes", nullable = false)
     private short earlyExitGraceMinutes = 15;
+
+    /**
+     * How many early departures a month the grace above covers.
+     *
+     * <p>Before this existed the grace applied every day, so leaving fifteen
+     * minutes early on all twenty-two working days recorded nothing at all.
+     * An allowance of occasions is what makes repeat early leaving visible.
+     *
+     * <p>Zero forgives nothing. A high number restores the old behaviour.
+     */
+    @Column(name = "early_exits_allowed_per_month", nullable = false)
+    private short earlyExitsAllowedPerMonth = 2;
 
     /**
      * How many late marks in the reset period cost a day's pay.

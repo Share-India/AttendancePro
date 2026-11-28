@@ -33,7 +33,8 @@ public class AttendanceCalculationService {
             int workingMinutes,
             int breakMinutes,
             int lateMinutes,
-            int earlyExitMinutes,
+            /** Before any grace: {@link EarlyExitAllowanceService} decides what is forgiven. */
+            int rawEarlyExitMinutes,
             int overtimeMinutes,
             AttendanceStatus status
     ) {
@@ -61,19 +62,24 @@ public class AttendanceCalculationService {
     }
 
     /** Minutes left early, measured against the shift end minus its grace. */
-    public int calculateEarlyExitMinutes(Instant punchOutTime, LocalDate businessDate, ZoneId zone,
-                                         Shift shift, AttendancePolicy policy) {
+    /**
+     * Minutes between the punch-out and the end of the shift, before any
+     * grace.
+     *
+     * <p>Raw on purpose. Grace is no longer a property of the day: it is an
+     * allowance of two departures a month, and only
+     * {@link EarlyExitAllowanceService} knows how many of them are left. A
+     * figure with the grace already subtracted cannot be told apart from a
+     * day nobody left early on, so the allowance would have nothing to
+     * decide about.
+     */
+    public int calculateRawEarlyExitMinutes(Instant punchOutTime, LocalDate businessDate,
+                                            ZoneId zone, Shift shift) {
         if (punchOutTime == null || shift == null) {
             return 0;
         }
-        int graceMinutes = shift.getEarlyExitGraceMinutes() > 0
-                ? shift.getEarlyExitGraceMinutes()
-                : policy.getEarlyExitGraceMinutes();
-
-        Instant graceStarts = DateTimeUtils.shiftEndInstant(businessDate, zone, shift)
-                .minusSeconds(graceMinutes * 60L);
-
-        return DateTimeUtils.minutesBetween(punchOutTime, graceStarts);
+        return DateTimeUtils.minutesBetween(punchOutTime,
+                DateTimeUtils.shiftEndInstant(businessDate, zone, shift));
     }
 
     /**
@@ -168,11 +174,11 @@ public class AttendanceCalculationService {
 
         int workingMinutes = calculateWorkingMinutes(punchInTime, punchOutTime, deductibleBreakMinutes);
         int lateMinutes = calculateLateMinutes(punchInTime, businessDate, zone, shift, policy);
-        int earlyExitMinutes = calculateEarlyExitMinutes(punchOutTime, businessDate, zone, shift, policy);
+        int rawEarlyExitMinutes = calculateRawEarlyExitMinutes(punchOutTime, businessDate, zone, shift);
         int overtimeMinutes = calculateOvertimeMinutes(workingMinutes, shift);
         AttendanceStatus status = determineStatus(workingMinutes, dayType, workMode, shift, policy);
 
         return new DayCalculation(
-                workingMinutes, totalBreakMinutes, lateMinutes, earlyExitMinutes, overtimeMinutes, status);
+                workingMinutes, totalBreakMinutes, lateMinutes, rawEarlyExitMinutes, overtimeMinutes, status);
     }
 }

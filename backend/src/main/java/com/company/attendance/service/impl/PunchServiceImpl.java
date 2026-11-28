@@ -31,6 +31,7 @@ import com.company.attendance.repository.LeaveRequestRepository;
 import com.company.attendance.repository.OvertimeRecordRepository;
 import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.AttendanceCalculationService;
+import com.company.attendance.service.EarlyExitAllowanceService;
 import com.company.attendance.service.MonthlyGraceService;
 import com.company.attendance.service.CalendarService;
 import com.company.attendance.service.GeofenceService;
@@ -85,6 +86,7 @@ public class PunchServiceImpl implements PunchService {
     private final SuspiciousPunchDetector suspiciousPunchDetector;
     private final AttendanceCalculationService calculationService;
     private final MonthlyGraceService monthlyGraceService;
+    private final EarlyExitAllowanceService earlyExitAllowanceService;
     private final WorkFromHomeService workFromHomeService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
@@ -103,6 +105,7 @@ public class PunchServiceImpl implements PunchService {
                             SuspiciousPunchDetector suspiciousPunchDetector,
                             AttendanceCalculationService calculationService,
                                MonthlyGraceService monthlyGraceService,
+                               EarlyExitAllowanceService earlyExitAllowanceService,
                             WorkFromHomeService workFromHomeService,
                             AuditLogService auditLogService,
                             ObjectMapper objectMapper) {
@@ -120,6 +123,7 @@ public class PunchServiceImpl implements PunchService {
         this.suspiciousPunchDetector = suspiciousPunchDetector;
         this.calculationService = calculationService;
         this.monthlyGraceService = monthlyGraceService;
+        this.earlyExitAllowanceService = earlyExitAllowanceService;
         this.workFromHomeService = workFromHomeService;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
@@ -300,7 +304,8 @@ public class PunchServiceImpl implements PunchService {
 
         attendance.setWorkingMinutes(calculation.workingMinutes());
         attendance.setBreakMinutes(calculation.breakMinutes());
-        attendance.setEarlyExitMinutes(calculation.earlyExitMinutes());
+        earlyExitAllowanceService.applyTo(attendance, calculation.rawEarlyExitMinutes(),
+                shift, attendancePolicy);
         attendance.setOvertimeMinutes(calculation.overtimeMinutes());
         attendance.setAttendanceStatus(calculation.status());
 

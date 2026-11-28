@@ -64,7 +64,7 @@ class AttendancePolicyAdminIT {
         return new AttendancePolicyRequest(
                 "Default Attendance Policy", "The company default",
                 fullDay, shortDay, halfDay, minimum,
-                (short) 15, (short) 15,
+                (short) 15, (short) 15, (short) 2,
                 (short) 2, new BigDecimal("1.0"),
                 (short) 60, true, true, true,
                 window, perMonth, (short) 8, (short) 0,

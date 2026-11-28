@@ -192,6 +192,8 @@ export interface AttendancePolicy {
 
   gracePeriodMinutes: number;
   earlyExitGraceMinutes: number;
+  /** How many early departures a month that grace covers. Beyond it, the day is recorded. */
+  earlyExitsAllowedPerMonth: number;
   /** How many late marks in the reset period cost a day's pay. 0 switches the penalty off. */
   lateMarksPerPenalty: number;
   /** What that many late marks costs, in days of pay. Loss of pay, never a charge to the balance. */

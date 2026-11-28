@@ -25,6 +25,7 @@ public record AttendancePolicyResponse(
 
         short gracePeriodMinutes,
         short earlyExitGraceMinutes,
+        short earlyExitsAllowedPerMonth,
         short lateMarksPerPenalty,
         BigDecimal lateMarkPenaltyDays,
         String lateMarkResetPeriod,
@@ -59,6 +60,7 @@ public record AttendancePolicyResponse(
                 policy.getMinAttendanceMinutes(),
                 policy.getGracePeriodMinutes(),
                 policy.getEarlyExitGraceMinutes(),
+                policy.getEarlyExitsAllowedPerMonth(),
                 policy.getLateMarksPerPenalty(),
                 policy.getLateMarkPenaltyDays(),
                 policy.getLateMarkResetPeriod(),

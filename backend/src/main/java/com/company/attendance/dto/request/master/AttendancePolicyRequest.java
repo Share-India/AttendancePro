@@ -55,6 +55,10 @@ public record AttendancePolicyRequest(
         @Max(value = 480, message = "Early-exit grace beyond eight hours is not a grace period")
         short earlyExitGraceMinutes,
 
+        @Min(value = 0, message = "Early exits allowed cannot be negative")
+        @Max(value = 31, message = "More early exits than days in a month")
+        short earlyExitsAllowedPerMonth,
+
         @Min(value = 0, message = "Late marks per penalty cannot be negative")
         @Max(value = 31, message = "More late marks than days in a month")
         short lateMarksPerPenalty,

@@ -142,6 +142,18 @@ public class Attendance extends BaseEntity {
     @Column(name = "early_exit_minutes", nullable = false)
     private int earlyExitMinutes;
 
+    /**
+     * What this day drew from the month's early-exit allowance.
+     *
+     * <p>Non-zero means the day was an early departure that the allowance
+     * forgave, and that one of the month's two occasions is spent. Stored
+     * rather than derived for the same reason {@link #graceUsedMinutes} is:
+     * the count is a query over the whole month, and re-settling a day has to
+     * exclude that day's own earlier spend rather than charge the month twice.
+     */
+    @Column(name = "early_exit_grace_used_minutes", nullable = false)
+    private int earlyExitGraceUsedMinutes;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "attendance_status", nullable = false, length = 30)
     private AttendanceStatus attendanceStatus = AttendanceStatus.PUNCHED_IN;

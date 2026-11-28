@@ -79,6 +79,7 @@ public class AttendanceOverrideService {
     private final CalendarService calendarService;
     private final AttendanceCalculationService calculationService;
     private final MonthlyGraceService monthlyGraceService;
+    private final EarlyExitAllowanceService earlyExitAllowanceService;
     private final AuditLogService auditLogService;
 
     public AttendanceOverrideService(AttendanceRepository attendanceRepository,
@@ -91,6 +92,7 @@ public class AttendanceOverrideService {
                                      CalendarService calendarService,
                                      AttendanceCalculationService calculationService,
                                MonthlyGraceService monthlyGraceService,
+                               EarlyExitAllowanceService earlyExitAllowanceService,
                                      AuditLogService auditLogService) {
         this.attendanceRepository = attendanceRepository;
         this.punchEventRepository = punchEventRepository;
@@ -102,6 +104,7 @@ public class AttendanceOverrideService {
         this.calendarService = calendarService;
         this.calculationService = calculationService;
         this.monthlyGraceService = monthlyGraceService;
+        this.earlyExitAllowanceService = earlyExitAllowanceService;
         this.auditLogService = auditLogService;
     }
 
@@ -243,7 +246,8 @@ public class AttendanceOverrideService {
             attendance.setWorkingMinutes(calculation.workingMinutes());
             attendance.setBreakMinutes(calculation.breakMinutes());
             monthlyGraceService.applyTo(attendance, calculation.lateMinutes());
-            attendance.setEarlyExitMinutes(calculation.earlyExitMinutes());
+            earlyExitAllowanceService.applyTo(attendance, calculation.rawEarlyExitMinutes(),
+                shift, policy);
             attendance.setOvertimeMinutes(calculation.overtimeMinutes());
             attendance.setAttendanceStatus(calculation.status());
             return;
@@ -254,6 +258,7 @@ public class AttendanceOverrideService {
         attendance.setWorkingMinutes(0);
         attendance.setBreakMinutes(0);
         attendance.setEarlyExitMinutes(0);
+        attendance.setEarlyExitGraceUsedMinutes(0);
         attendance.setOvertimeMinutes(0);
         monthlyGraceService.applyTo(attendance,
                 calculationService.calculateLateMinutes(punchIn, date, zone, shift, policy));

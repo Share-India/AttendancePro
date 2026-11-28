@@ -70,6 +70,7 @@ public class AttendancePolicyAdminService {
 
         policy.setGracePeriodMinutes(request.gracePeriodMinutes());
         policy.setEarlyExitGraceMinutes(request.earlyExitGraceMinutes());
+        policy.setEarlyExitsAllowedPerMonth(request.earlyExitsAllowedPerMonth());
         policy.setLateMarksPerPenalty(request.lateMarksPerPenalty());
         policy.setLateMarkPenaltyDays(request.lateMarkPenaltyDays());
 
@@ -148,6 +149,7 @@ public class AttendancePolicyAdminService {
         values.put("minAttendanceMinutes", policy.getMinAttendanceMinutes());
         values.put("gracePeriodMinutes", policy.getGracePeriodMinutes());
         values.put("earlyExitGraceMinutes", policy.getEarlyExitGraceMinutes());
+        values.put("earlyExitsAllowedPerMonth", policy.getEarlyExitsAllowedPerMonth());
         values.put("lateMarksPerPenalty", policy.getLateMarksPerPenalty());
         values.put("lateMarkPenaltyDays", policy.getLateMarkPenaltyDays());
         values.put("maxBreakMinutes", policy.getMaxBreakMinutes());

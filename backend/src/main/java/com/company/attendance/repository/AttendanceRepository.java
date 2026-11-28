@@ -102,6 +102,26 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long>, J
                                          @Param("to") LocalDate to,
                                          @Param("excluding") LocalDate excluding);
 
+    /**
+     * How many days of the month already spent an early-exit occasion,
+     * ignoring the day being settled.
+     *
+     * <p>Counts days rather than sums minutes: the allowance is two
+     * departures a month, not thirty minutes of them. Excluding the date is
+     * what makes re-settling the same day idempotent.
+     */
+    @Query("""
+           SELECT COUNT(a) FROM Attendance a
+            WHERE a.employee.id = :employeeId
+              AND a.attendanceDate BETWEEN :from AND :to
+              AND a.attendanceDate <> :excluding
+              AND a.earlyExitGraceUsedMinutes > 0
+           """)
+    long countEarlyExitGraceUsedInMonthExcluding(@Param("employeeId") Long employeeId,
+                                                 @Param("from") LocalDate from,
+                                                 @Param("to") LocalDate to,
+                                                 @Param("excluding") LocalDate excluding);
+
     @Query("""
            SELECT COALESCE(SUM(a.graceUsedMinutes), 0) FROM Attendance a
             WHERE a.employee.id = :employeeId

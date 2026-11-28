@@ -136,22 +136,30 @@ class AttendanceCalculationTest {
         }
     }
 
+    /**
+     * Raw minutes only. Grace is no longer a property of the day — it is an
+     * allowance of two departures a month — so what is forgiven is
+     * {@link com.company.attendance.service.EarlyExitAllowanceService}'s to
+     * decide and is tested there.
+     */
     @Nested
     @DisplayName("early exit")
     class EarlyExit {
 
         @Test
-        @DisplayName("leaving 45 minutes early counts 30 after the 15 minute grace")
-        void appliesGrace() {
-            // Shift ends 18:30, grace 15, left 17:45.
-            assertThat(service.calculateEarlyExitMinutes(at(MONDAY, 17, 45), MONDAY, IST, generalShift, policy))
-                    .isEqualTo(30);
+        @DisplayName("leaving 45 minutes early is 45 minutes early, before any grace")
+        void measuresTheWholeDeparture() {
+            // Shift ends 18:30, left 17:45. Subtracting the grace here would
+            // make a 15-minute departure indistinguishable from not leaving
+            // early at all, and the allowance would have nothing to count.
+            assertThat(service.calculateRawEarlyExitMinutes(at(MONDAY, 17, 45), MONDAY, IST, generalShift))
+                    .isEqualTo(45);
         }
 
         @Test
         @DisplayName("staying past the shift end is never a negative early exit")
         void stayingLateIsZero() {
-            assertThat(service.calculateEarlyExitMinutes(at(MONDAY, 19, 30), MONDAY, IST, generalShift, policy))
+            assertThat(service.calculateRawEarlyExitMinutes(at(MONDAY, 19, 30), MONDAY, IST, generalShift))
                     .isZero();
         }
     }
@@ -290,12 +298,13 @@ class AttendanceCalculationTest {
         @DisplayName("a night shift's end time is measured on the following calendar day")
         void earlyExitSpansMidnight() {
             Shift night = nightShift();
-            // Left at 06:00, shift ends 07:00 next day with 10 minutes grace,
-            // so 50 minutes early rather than a nonsensical figure.
+            // Left at 06:00, shift ends 07:00 the next day, so 60 minutes
+            // early rather than a nonsensical figure measured against the
+            // wrong calendar day.
             Instant leftEarly = at(MONDAY.plusDays(1), 6, 0);
 
-            assertThat(service.calculateEarlyExitMinutes(leftEarly, MONDAY, IST, night, policy))
-                    .isEqualTo(50);
+            assertThat(service.calculateRawEarlyExitMinutes(leftEarly, MONDAY, IST, night))
+                    .isEqualTo(60);
         }
 
         @Test

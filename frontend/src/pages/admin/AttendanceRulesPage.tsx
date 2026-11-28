@@ -231,7 +231,7 @@ export const AttendanceRulesPage = () => {
 
       <Section
         title="Lateness"
-        description="Grace is a monthly allowance shared across the month, not a fresh window each morning."
+        description="Both allowances are monthly, not a fresh window each day: 30 minutes of lateness shared across the month, and a fixed number of early departures."
       >
         <NumberField
           label="Grace period"
@@ -243,9 +243,18 @@ export const AttendanceRulesPage = () => {
         <NumberField
           label="Early-exit grace"
           unit="minutes"
-          hint="How early someone may leave before it is recorded against the day."
+          hint="How early someone may leave before it is recorded against the day. Per occasion, not per day."
           value={form.earlyExitGraceMinutes}
           onChange={(next) => set('earlyExitGraceMinutes', next)}
+        />
+        <NumberField
+          label="Early exits allowed"
+          unit="a month"
+          hint={`How many early departures that grace covers. Beyond ${
+            form.earlyExitsAllowedPerMonth
+          } the whole departure is recorded, so leaving early every evening stops being invisible. 0 forgives none.`}
+          value={form.earlyExitsAllowedPerMonth}
+          onChange={(next) => set('earlyExitsAllowedPerMonth', next)}
         />
         <NumberField
           label="Late marks before a day is docked"
