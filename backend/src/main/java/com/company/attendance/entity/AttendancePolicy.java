@@ -4,6 +4,7 @@ import com.company.attendance.entity.base.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -50,8 +51,28 @@ public class AttendancePolicy extends BaseEntity {
     @Column(name = "early_exit_grace_minutes", nullable = false)
     private short earlyExitGraceMinutes = 15;
 
-    @Column(name = "late_marks_for_half_day", nullable = false)
-    private short lateMarksForHalfDay = 3;
+    /**
+     * How many late marks in the reset period cost a day's pay.
+     *
+     * <p>A late mark is a day with recorded late minutes — lateness the
+     * month's grace pool could no longer absorb. At the default, the second
+     * late mark of a month costs {@link #lateMarkPenaltyDays}, the fourth
+     * costs it again, and an odd one left over at month end costs nothing.
+     *
+     * <p>Zero switches the penalty off without disturbing the late marks
+     * themselves, which are still counted and still shown.
+     */
+    @Column(name = "late_marks_per_penalty", nullable = false)
+    private short lateMarksPerPenalty = 2;
+
+    /**
+     * What that many late marks costs, in days of pay.
+     *
+     * <p>Loss of pay, not a charge to the leave balance: the point of the
+     * rule is that lateness cannot be absorbed by leave somebody has saved.
+     */
+    @Column(name = "late_mark_penalty_days", nullable = false, precision = 3, scale = 1)
+    private BigDecimal lateMarkPenaltyDays = new BigDecimal("1.0");
 
     @Column(name = "late_mark_reset_period", nullable = false, length = 20)
     private String lateMarkResetPeriod = "MONTHLY";

@@ -17,6 +17,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -56,6 +57,26 @@ public class LeaveRequestDay {
     /** False for holidays and weekly offs the leave type does not charge for. */
     @Column(name = "is_deductible", nullable = false)
     private boolean deductible = true;
+
+    /**
+     * What this day takes off the leave balance, in days.
+     *
+     * <p>Zero when the day is not deductible. Otherwise the portion scaled by
+     * what the date is worth — so a whole day of leave on a working Saturday
+     * charges 0.5, because {@code PayrollRulesService} makes a short Saturday
+     * half a working day and the salary sheet credits it back as half.
+     *
+     * <p>Stored rather than derived from {@link #dayPortion}, because the
+     * balance has already been debited by this amount and an audit row names
+     * it. Deriving it would move the figure whenever a setting changed, and
+     * every ledger would stop agreeing with the sum of the days that produced
+     * it. See V33.
+     *
+     * <p>Two decimal places because a half day on a short Saturday is a
+     * quarter of a day. At one, the database rounds that to 0.3 silently.
+     */
+    @Column(name = "deductible_days", nullable = false, precision = 4, scale = 2)
+    private BigDecimal deductibleDays = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "day_type", nullable = false, length = 20)

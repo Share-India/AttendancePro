@@ -33,6 +33,7 @@ import com.company.attendance.repository.OfficeRepository;
 import com.company.attendance.repository.ShiftRepository;
 import com.company.attendance.repository.WeeklyOffRepository;
 import com.company.attendance.security.UserPrincipal;
+import com.company.attendance.service.LeaveDayExpansionService;
 import com.company.attendance.service.ReportExporter;
 import com.company.attendance.service.ReportService;
 import com.company.attendance.support.DatabaseCleaner;
@@ -79,6 +80,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * their sheet shows the 10th and 24th off and the other three worked, which is
  * the 2nd-and-4th-Saturday roster. Getting that out of the real weekly-off
  * rules rather than hard-coding it is half the value of the test.
+ *
+ * <p><strong>These figures are the pre-V32 rules, and that is deliberate.</strong>
+ * This fixture seeds no {@code payroll.rules_effective_date}, so the dated
+ * rules introduced in V32 are off: an absence is still charged to the leave
+ * balance, a worked Saturday still pays a full day, and late marks still cost
+ * nobody anything. That is what payroll reconciled against, and a re-run of
+ * October has to keep reproducing it — the rules are dated precisely so that
+ * earlier months do not move. {@link SalaryAttendanceRulesIT} is the same
+ * sheet with the rules on, and the two sets of figures are meant to differ.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -96,6 +106,7 @@ class SalaryAttendanceReportIT {
             1, 3, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 19, 21, 22, 23, 26, 27, 28, 29, 30, 31);
 
     @Autowired ReportService reportService;
+    @Autowired LeaveDayExpansionService leaveDayExpansionService;
     @Autowired ReportExporter reportExporter;
     @Autowired EmployeeRepository employeeRepository;
     @Autowired OfficeRepository officeRepository;
@@ -258,48 +269,45 @@ class SalaryAttendanceReportIT {
 
     private void grantLeave(Employee person, int day) {
         LocalDate date = OCTOBER.withDayOfMonth(day);
-
-        LeaveRequest request = new LeaveRequest();
-        request.setRequestNumber("LV-SAL-" + person.getEmployeeCode() + "-" + day);
-        request.setEmployee(person);
-        request.setLeaveType(paidLeave);
-        request.setFromDate(date);
-        request.setToDate(date);
-        request.setTotalDays(BigDecimal.ONE);
-        request.setReason("Seeded");
-        request.setStatus(RequestStatus.APPROVED);
-        request = leaveRequestRepository.save(request);
-
-        LeaveRequestDay leaveDay = new LeaveRequestDay();
-        leaveDay.setLeaveRequest(request);
-        leaveDay.setEmployeeId(person.getId());
-        leaveDay.setLeaveDate(date);
-        leaveDay.setDayPortion(DayPortion.FULL_DAY);
-        leaveDay.setDeductible(true);
-        leaveRequestDayRepository.save(leaveDay);
+        grant(person, date, date, DayPortion.FULL_DAY, DayPortion.FULL_DAY, "LV-SAL-");
     }
 
     private void grantHalfDayLeave(Employee person, int day) {
         LocalDate date = OCTOBER.withDayOfMonth(day);
+        grant(person, date, date, DayPortion.FIRST_HALF, DayPortion.FIRST_HALF, "LV-HALF-");
+    }
+
+    /**
+     * An approved leave, expanded by the real service.
+     *
+     * <p>Through {@link LeaveDayExpansionService} rather than by hand, so the
+     * days carry the charge the application would actually have debited. A
+     * fixture that set {@code deductibleDays} itself would assert the salary
+     * sheet against a number the leave module never produces, which is how a
+     * Saturday comes to be debited as a day and credited as a half.
+     */
+    private void grant(Employee person, LocalDate from, LocalDate to,
+                       DayPortion fromPortion, DayPortion toPortion, String prefix) {
+        LeaveDayExpansionService.Expansion expansion = leaveDayExpansionService
+                .expand(person, paidLeave, from, to, fromPortion, toPortion);
 
         LeaveRequest request = new LeaveRequest();
-        request.setRequestNumber("LV-HALF-" + person.getEmployeeCode() + "-" + day);
+        request.setRequestNumber(prefix + person.getEmployeeCode() + "-" + from.getDayOfMonth());
         request.setEmployee(person);
         request.setLeaveType(paidLeave);
-        request.setFromDate(date);
-        request.setToDate(date);
-        request.setTotalDays(new BigDecimal("0.5"));
+        request.setFromDate(from);
+        request.setToDate(to);
+        request.setFromDayPortion(fromPortion);
+        request.setToDayPortion(toPortion);
+        request.setTotalDays(expansion.deductibleDays());
         request.setReason("Seeded");
         request.setStatus(RequestStatus.APPROVED);
-        request = leaveRequestRepository.save(request);
+        LeaveRequest saved = leaveRequestRepository.save(request);
 
-        LeaveRequestDay leaveDay = new LeaveRequestDay();
-        leaveDay.setLeaveRequest(request);
-        leaveDay.setEmployeeId(person.getId());
-        leaveDay.setLeaveDate(date);
-        leaveDay.setDayPortion(DayPortion.FIRST_HALF);
-        leaveDay.setDeductible(true);
-        leaveRequestDayRepository.save(leaveDay);
+        for (LeaveRequestDay day : expansion.days()) {
+            day.setLeaveRequest(saved);
+            leaveRequestDayRepository.save(day);
+        }
     }
 
     private Instant at(LocalDate date, int hour, int minute) {
@@ -389,7 +397,10 @@ class SalaryAttendanceReportIT {
         assertThat(row.get("d2")).isEqualTo("Holiday");
         assertThat(row.get("d4")).isEqualTo("Sunday");
         assertThat(row.get("d10")).isEqualTo("Sat off");
-        assertThat(row.get("d12")).isEqualTo("Late");
+        // Eighteen minutes late, and no grace pool in this fixture, so all
+        // eighteen are on the record. The cell says how many: "Late" alone
+        // left payroll unable to tell two minutes from two hours.
+        assertThat(row.get("d12")).isEqualTo("Late by 18m");
         assertThat(row.get("d20")).isEqualTo("Holiday");
         assertThat(row.get("d24")).isEqualTo("Sat off");
         assertThat(row.get("d30")).isEqualTo("Absent");
@@ -421,13 +432,25 @@ class SalaryAttendanceReportIT {
                 "Total days worked (Present days)",
                 "Total working days post leave adjustment",
                 "Holidays & Weekly offs",
+                "Late marks",
+                "Grace used (min of 30)",
+                "LOP (late marks)",
+                "LOP (no leave applied)",
+                "Saturday half days",
                 "Salary payable Days",
                 "Paid leaves for the month",
                 "Leaves to be carry forwarded November 2026",
                 "Comments");
 
-        // Two fixed columns, thirty-one days, ten figures.
-        assertThat(columns).hasSize(2 + 31 + 10);
+        // The five deductions sit between the figures they come from and the
+        // figure they reduce, so a payable count short of the month can be
+        // accounted for without opening a second report.
+        assertThat(labels).containsSubsequence("Holidays & Weekly offs", "Late marks",
+                "LOP (late marks)", "LOP (no leave applied)", "Saturday half days",
+                "Salary payable Days");
+
+        // Two fixed columns, thirty-one days, fifteen figures.
+        assertThat(columns).hasSize(2 + 31 + 15);
     }
 
     @Test
@@ -495,7 +518,7 @@ class SalaryAttendanceReportIT {
     }
 
     @Test
-    @DisplayName("the export carries the same figures as the screen, across all forty-three columns")
+    @DisplayName("the export carries the same figures as the screen, across all forty-eight columns")
     void exportMatchesTheScreen() {
         Employee vikram = employee("EMP7002", "Vikram", "Das", "7");
         presentAllMonthExcept(vikram, Map.of(12, 18, 23, 11, 29, 6), Set.of(30));
@@ -507,7 +530,7 @@ class SalaryAttendanceReportIT {
         reportExporter.write(result, ReportExporter.Format.CSV, IST, out);
         String csv = out.toString(StandardCharsets.UTF_8);
 
-        // A forty-three column sheet is read in a spreadsheet, not on a phone,
+        // A forty-eight column sheet is read in a spreadsheet, not on a phone,
         // so the export is the artefact that matters most for this report.
         assertThat(csv).contains("Balance leaves as on 1st October 2026");
         assertThat(csv).contains("Leaves to be carry forwarded November 2026");

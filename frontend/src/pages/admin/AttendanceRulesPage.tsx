@@ -8,18 +8,21 @@ import { attendancePolicyApi } from '../../features/admin/masterApi';
 import { ApiError } from '../../types/api';
 import type { AttendancePolicy, AttendancePolicyUpdate } from '../../types/attendance';
 
-/** A whole-number field with its unit and a line saying what it decides. */
+/** A number field with its unit and a line saying what it decides. */
 const NumberField = ({
   label,
   hint,
   unit,
   value,
+  step,
   onChange,
 }: {
   label: string;
   hint: string;
   unit: string;
   value: number;
+  /** Omitted for the whole-number fields, which are most of them. */
+  step?: number;
   onChange: (next: number) => void;
 }) => (
   <div>
@@ -27,6 +30,7 @@ const NumberField = ({
     <div className="flex items-center gap-sm">
       <input
         type="number"
+        step={step}
         className="field-input w-28 tabular-nums"
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
@@ -244,11 +248,21 @@ export const AttendanceRulesPage = () => {
           onChange={(next) => set('earlyExitGraceMinutes', next)}
         />
         <NumberField
-          label="Late marks before a half day"
+          label="Late marks before a day is docked"
           unit="marks"
-          hint={`Reset ${form.lateMarksForHalfDay > 0 ? policy.lateMarkResetPeriod.toLowerCase() : 'never'}.`}
-          value={form.lateMarksForHalfDay}
-          onChange={(next) => set('lateMarksForHalfDay', next)}
+          hint={`A day with late minutes left after the month's grace pool is a late mark. Reset ${
+            form.lateMarksPerPenalty > 0 ? policy.lateMarkResetPeriod.toLowerCase() : 'never'
+          }. 0 counts late marks without docking anybody.`}
+          value={form.lateMarksPerPenalty}
+          onChange={(next) => set('lateMarksPerPenalty', next)}
+        />
+        <NumberField
+          label="What that costs"
+          unit="days' pay"
+          hint="Loss of pay on the salary sheet, never a charge to the leave balance — lateness cannot be covered by leave somebody has saved."
+          value={form.lateMarkPenaltyDays}
+          step={0.5}
+          onChange={(next) => set('lateMarkPenaltyDays', next)}
         />
       </Section>
 

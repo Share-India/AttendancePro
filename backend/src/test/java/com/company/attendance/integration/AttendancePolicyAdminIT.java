@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.math.BigDecimal;
 import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,7 +64,8 @@ class AttendancePolicyAdminIT {
         return new AttendancePolicyRequest(
                 "Default Attendance Policy", "The company default",
                 fullDay, shortDay, halfDay, minimum,
-                (short) 15, (short) 15, (short) 3,
+                (short) 15, (short) 15,
+                (short) 2, new BigDecimal("1.0"),
                 (short) 60, true, true, true,
                 window, perMonth, (short) 8, (short) 0,
                 false, (short) 30);

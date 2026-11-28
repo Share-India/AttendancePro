@@ -37,9 +37,13 @@ import com.company.attendance.security.UserPrincipal;
 import com.company.attendance.service.CalendarService;
 import com.company.attendance.service.LeaveBalanceService;
 import com.company.attendance.service.PaidLeaveAccrualService;
+import com.company.attendance.service.PayrollRulesService;
+import com.company.attendance.service.PayrollRulesService.Rules;
 import com.company.attendance.service.ReportService;
 import com.company.attendance.service.exam.ExamSets;
 import com.company.attendance.util.DateTimeUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,6 +83,8 @@ import java.util.stream.Collectors;
 @Service
 public class ReportServiceImpl implements ReportService {
 
+    private static final Logger log = LoggerFactory.getLogger(ReportServiceImpl.class);
+
     private static final String PERM_VIEW_ALL = "REPORT_VIEW_ALL";
     private static final String PERM_VIEW_TEAM = "REPORT_VIEW_TEAM";
 
@@ -103,6 +109,7 @@ public class ReportServiceImpl implements ReportService {
     private final ExamAnswerRepository examAnswerRepository;
     private final ExamQuestionRepository examQuestionRepository;
     private final LeaveBalanceRepository leaveBalanceRepository;
+    private final PayrollRulesService payrollRulesService;
     private final CalendarService calendarService;
     private final LeaveBalanceService leaveBalanceService;
     private final PaidLeaveAccrualService paidLeaveAccrualService;
@@ -119,6 +126,7 @@ public class ReportServiceImpl implements ReportService {
                              ExamAnswerRepository examAnswerRepository,
                              ExamQuestionRepository examQuestionRepository,
                              LeaveBalanceRepository leaveBalanceRepository,
+                             PayrollRulesService payrollRulesService,
                              CalendarService calendarService,
                              LeaveBalanceService leaveBalanceService,
                              PaidLeaveAccrualService paidLeaveAccrualService,
@@ -134,6 +142,7 @@ public class ReportServiceImpl implements ReportService {
         this.examAnswerRepository = examAnswerRepository;
         this.examQuestionRepository = examQuestionRepository;
         this.leaveBalanceRepository = leaveBalanceRepository;
+        this.payrollRulesService = payrollRulesService;
         this.calendarService = calendarService;
         this.leaveBalanceService = leaveBalanceService;
         this.paidLeaveAccrualService = paidLeaveAccrualService;
@@ -376,22 +385,49 @@ public class ReportServiceImpl implements ReportService {
     // The counts are not independent of each other. They satisfy, for
     // every row:
     //
-    //     Total working days      = days counted - holidays & weekly offs
-    //     Total days worked       = Present + Late
+    //     days counted            = working days + offs + Saturday halves
+    //     working days            = days worked + leaves taken + LOP
     //     Post leave adjustment   = days worked + leaves taken
-    //     Salary payable Days     = post leave adjustment + offs
+    //     Salary payable Days     = days worked + leaves taken + offs
+    //                                 - LOP (late marks)
     //     Carry forward           = opening + month's accrual - taken
     //
-    // Verified against three rows of payroll's own October sheet before
-    // any of it was written, which is why an Absent day is charged as a
-    // leave day taken: that is what makes their payable figure come to
-    // the full month rather than one short.
+    // Leaves taken can never exceed the opening balance plus the
+    // month's accrual, because a day is only charged to leave that is
+    // actually there: a leave the balance cannot pay for becomes an
+    // absence on that day and loss of pay in the column. So the
+    // carry-forward is never negative, and the overdraft that used to
+    // live in a sentence in the Comments column is now a figure the
+    // payable days reflect.
+    //
+    // A working day is counted at its weight, which is a half for a
+    // rostered short Saturday and one for everything else, so the first
+    // identity is what accounts for the halves that are neither owed to
+    // anybody nor paid to anybody. SalaryAttendanceRulesIT asserts all
+    // three on every row it produces.
+    //
+    // ON THE TWO SETS OF FIGURES
+    //
+    // The layout and the arithmetic were verified against three rows of
+    // payroll's own October 2026 sheet before any of this was written,
+    // and under those rules an Absent day was charged to the leave
+    // balance -- which is what made their payable figure come to a full
+    // month for somebody who missed a day.
+    //
+    // V32 changed three of the rules, dated from 1 November 2026, and
+    // the sheet no longer agrees with payroll's for a month under them:
+    // an unapplied absence is loss of pay instead of a charge to the
+    // balance, a worked Saturday pays half a day instead of a full one,
+    // and every second late mark costs a day. A month before that date
+    // still reproduces exactly, which is the point of dating the rules
+    // rather than switching them -- see Rules#appliesOn.
     // -----------------------------------------------------------------
 
     /** The leave type a salary sheet is denominated in. */
     private static final String PAID_LEAVE_CODE = "PL";
 
     private static final BigDecimal HALF = new BigDecimal("0.5");
+
 
     /**
      * What one day of the sheet says, and what it counts as.
@@ -450,8 +486,14 @@ public class ReportServiceImpl implements ReportService {
             return this != BLANK && this != UPCOMING && this != NOT_TRACKED;
         }
 
-        /** Days credited to "Total days worked". A late arrival still worked. */
-        BigDecimal worked() {
+        /**
+         * The fraction of the day's own weight that was worked.
+         *
+         * <p>A fraction, not a number of days: the caller multiplies by what
+         * the day is owed, so a present Saturday credits half a day and a half
+         * day on a Saturday credits a quarter. A late arrival still worked.
+         */
+        BigDecimal workedFraction() {
             // SHORT_DAY earns a full day. It is a cell of its own only so the
             // sheet shows which days ran short of the mark.
             if (this == PRESENT || this == LATE || this == SHORT_DAY) {
@@ -480,6 +522,10 @@ public class ReportServiceImpl implements ReportService {
         // thousands of queries -- slow enough that the browser gave up before
         // the report returned.
         LocalDate trackingStart = calendarService.trackingStartDate();
+
+        // Read once, for the same reason: the rules are two settings rows and
+        // a policy row, and every day of every replayed month asks about them.
+        Rules rules = payrollRulesService.current();
 
         short leaveYear = leaveBalanceService.resolveLeaveYear(monthStart);
         LocalDate yearStart = leaveBalanceService.leaveYearStart(leaveYear);
@@ -513,7 +559,7 @@ public class ReportServiceImpl implements ReportService {
                 leaveByEmployee
                         .computeIfAbsent(day.getEmployeeId(), key -> new HashMap<>())
                         .merge(day.getLeaveDate(),
-                                day.isDeductible() ? day.getDayPortion().days() : BigDecimal.ZERO,
+                                day.getDeductibleDays(),
                                 BigDecimal::add);
             }
         }
@@ -537,24 +583,50 @@ public class ReportServiceImpl implements ReportService {
             row.put("sno", ++serial);
             row.put("employeeName", employee.getFullName());
 
+            // Resolved before the days rather than after them, because a day
+            // can only be charged to a balance that still has something in
+            // it. "Debit 0.5 from paid leave if available" is the rule, and
+            // the day loop cannot honour the second half of it without
+            // knowing what is there to draw on.
+            BigDecimal opening = openingBalance(employee, ledger.get(employee.getId()),
+                    yearStart, monthStart, accrualStart, dayTypes, days, leaves, today,
+                    trackingStart, rules);
+            BigDecimal accrued = paidLeaveAccrualService
+                    .accruedBy(employee, monthStart, monthEnd, accrualStart);
+
+            // The month's accrual is spendable within the month, which is the
+            // behaviour the sheet has always had.
+            BigDecimal available = opening.add(accrued);
+
             BigDecimal worked = BigDecimal.ZERO;
             BigDecimal taken = BigDecimal.ZERO;
+            BigDecimal unpaid = BigDecimal.ZERO;
+            // Both are loss of pay and both land in the same column, but the
+            // advice differs and only one of them is the employee's to fix.
+            // Telling somebody to apply for leave they did in fact apply for,
+            // and which was in fact approved, is worse than saying nothing.
+            BigDecimal unpaidNoLeave = BigDecimal.ZERO;
+            BigDecimal unpaidNoBalance = BigDecimal.ZERO;
+            BigDecimal workingDays = BigDecimal.ZERO;
+            BigDecimal saturdayHalves = BigDecimal.ZERO;
             int counted = 0;
             int offs = 0;
             int untracked = 0;
             int upcoming = 0;
             int absences = 0;
+            int lateMarks = 0;
+            int graceUsed = 0;
 
             for (int day = 1; day <= month.lengthOfMonth(); day++) {
                 LocalDate date = month.atDay(day);
+                Attendance attendance = days.get(date);
                 DayCell cell = classify(employee, date,
                         dayTypes.getOrDefault(date, Map.of())
                                 .getOrDefault(employee.getId(), DayType.WORKING),
-                        days.get(date), leaves.containsKey(date), today, trackingStart);
-
-                row.put(dayKey(day), cell.label());
+                        attendance, leaves.containsKey(date), today, trackingStart);
 
                 if (!cell.isCounted()) {
+                    row.put(dayKey(day), cellLabel(cell, attendance));
                     if (cell == DayCell.NOT_TRACKED) {
                         untracked++;
                     } else if (cell == DayCell.UPCOMING) {
@@ -564,52 +636,138 @@ public class ReportServiceImpl implements ReportService {
                 }
                 counted++;
                 if (cell.isOff()) {
+                    row.put(dayKey(day), cellLabel(cell, attendance));
                     offs++;
                     continue;
                 }
 
-                // One counted working day is worth one day, split between what
-                // was worked and what was charged to the balance. Charging
-                // first and crediting the remainder keeps that true however
-                // the day is made up: a half day of leave with a punch for the
-                // other half charges the half day and credits the half worked,
-                // instead of crediting a whole day and charging nothing.
-                BigDecimal charged = cell == DayCell.ABSENT
-                        // Payroll charges an absence to the leave balance. That
-                        // is the only reason their payable figure comes to a
-                        // full month for somebody who missed a day.
-                        ? BigDecimal.ONE
-                        : leaves.getOrDefault(date, BigDecimal.ZERO).min(BigDecimal.ONE);
+                // What this day is owed. A rostered short Saturday is half a
+                // working day, so it can be worth at most half a day and cost
+                // at most half a day. The other half is owed by nobody and
+                // paid to nobody; it is totalled separately so the sheet
+                // still reconciles to the length of the month rather than
+                // leaving payroll to account for a missing 1.5 days.
+                BigDecimal weight = rules.weightOf(date);
+                workingDays = workingDays.add(weight);
+                saturdayHalves = saturdayHalves.add(BigDecimal.ONE.subtract(weight));
+
+                if (attendance != null) {
+                    // Recorded late minutes are what the month's 30-minute
+                    // pool could no longer absorb, so any at all is a late
+                    // mark. The minutes the pool did absorb are counted too,
+                    // and shown: they are spent, and the next late arrival
+                    // has fewer of them.
+                    if (attendance.getLateMinutes() > 0 && rules.appliesOn(date)) {
+                        lateMarks++;
+                    }
+                    graceUsed += attendance.getGraceUsedMinutes();
+                }
+
+                // A counted working day is worth its weight, split between
+                // what was worked and what was charged to the balance.
+                // Charging first and crediting the remainder keeps that true
+                // however the day is made up: a half day of leave with a
+                // punch for the other half charges the half day and credits
+                // the half worked, instead of crediting a whole day and
+                // charging nothing.
+                BigDecimal wanted;
+                if (cell == DayCell.ABSENT) {
+                    // Before the effective date, payroll charged an absence to
+                    // the leave balance by itself — the only reason their
+                    // payable figure came to a full month for somebody who did
+                    // not turn up. From it, an absence nobody applied for is
+                    // loss of pay and the balance is untouched. Applying for
+                    // the leave and having it approved is what converts the day
+                    // back, which is the whole point of the rule.
+                    wanted = rules.appliesOn(date) ? BigDecimal.ZERO : weight;
+                } else {
+                    wanted = leaves.getOrDefault(date, BigDecimal.ZERO).min(weight);
+                }
+
+                // A leave is only paid out of leave somebody actually has.
+                // Approval checks the balance at the time, but the balance can
+                // be spent by an earlier day between approval and month end,
+                // and the sheet replays its own figure rather than reading a
+                // ledger — so the day is where the two have to be reconciled.
+                // Days are charged in date order: first come, first served.
+                //
+                // Before the effective date this cap is off, and an overdrawn
+                // balance stays a note in the Comments column. Turning it on
+                // for those months would change payable figures that have
+                // already been paid.
+                BigDecimal charged = rules.appliesOn(date) ? wanted.min(available) : wanted;
+                available = available.subtract(charged).max(BigDecimal.ZERO);
+
+                BigDecimal workedToday = cell.workedFraction().multiply(weight)
+                        .min(weight.subtract(charged))
+                        .max(BigDecimal.ZERO);
+
+                BigDecimal uncovered = weight.subtract(charged).subtract(workedToday)
+                        .max(BigDecimal.ZERO);
+
+                // A leave the balance could not pay for is an absence, and the
+                // sheet says so. Leaving it reading "Leave" while the pay came
+                // out in the LOP column would put the two halves of the same
+                // fact in different places, and the person querying their
+                // payslip reads the day, not the column.
+                if (cell == DayCell.LEAVE && charged.signum() == 0) {
+                    cell = DayCell.ABSENT;
+                }
 
                 if (cell == DayCell.ABSENT) {
                     absences++;
                 }
 
+                row.put(dayKey(day), partlyPaidLabel(cell, attendance, charged, uncovered));
+
                 taken = taken.add(charged);
-                worked = worked.add(cell.worked()
-                        .min(BigDecimal.ONE.subtract(charged))
-                        .max(BigDecimal.ZERO));
+                worked = worked.add(workedToday);
+                unpaid = unpaid.add(uncovered);
+                if (uncovered.signum() > 0) {
+                    if (wanted.signum() > 0) {
+                        // Leave was applied for and approved; the balance just
+                        // could not pay for all of it.
+                        unpaidNoBalance = unpaidNoBalance.add(uncovered);
+                    } else {
+                        unpaidNoLeave = unpaidNoLeave.add(uncovered);
+                    }
+                }
             }
 
-            BigDecimal opening = openingBalance(employee, ledger.get(employee.getId()),
-                    yearStart, monthStart, accrualStart, dayTypes, days, leaves, today,
-                    trackingStart);
-            BigDecimal accrued = paidLeaveAccrualService
-                    .accruedBy(employee, monthStart, monthEnd, accrualStart);
+            BigDecimal latePenalty = rules.penaltyFor(lateMarks);
 
             BigDecimal carried = opening.add(accrued).subtract(taken);
+
+            // Under the new rules this is always zero: nothing is charged
+            // beyond the balance, so the overdraft shows up as loss of pay in
+            // a column instead of as a sentence. It stays for the months
+            // before them, where a balance could be overdrawn and the comment
+            // was the only place that said so.
             BigDecimal shortfall = carried.signum() < 0 ? carried.negate() : BigDecimal.ZERO;
+
+            // Loss of pay never makes a payable figure negative. Somebody who
+            // managed both a month of late marks and a month of absence is a
+            // conversation, not a credit note.
+            BigDecimal payable = worked.add(taken).add(BigDecimal.valueOf(offs))
+                    .subtract(latePenalty)
+                    .max(BigDecimal.ZERO);
 
             row.put("openingBalance", strip(opening));
             row.put("leavesTaken", strip(taken));
-            row.put("workingDays", counted - offs);
+            row.put("workingDays", strip(workingDays));
             row.put("daysWorked", strip(worked));
             row.put("postLeaveAdjustment", strip(worked.add(taken)));
             row.put("holidaysAndOffs", offs);
-            row.put("payableDays", strip(worked.add(taken).add(BigDecimal.valueOf(offs))));
+            row.put("lateMarks", lateMarks);
+            row.put("graceUsedMinutes", graceUsed);
+            row.put("latePenaltyDays", strip(latePenalty));
+            row.put("unpaidDays", strip(unpaid));
+            row.put("saturdayHalfDays", strip(saturdayHalves));
+            row.put("payableDays", strip(payable));
             row.put("monthlyAccrual", strip(accrued));
             row.put("carryForward", strip(carried.max(BigDecimal.ZERO)));
-            row.put("comments", comments(month, untracked, upcoming, absences, shortfall));
+            row.put("comments", comments(month, untracked, upcoming, absences,
+                    unpaidNoLeave, unpaidNoBalance, lateMarks, latePenalty, shortfall));
 
             rows.add(row);
         }
@@ -642,6 +800,17 @@ public class ReportServiceImpl implements ReportService {
         columns.add(ReportColumn.number("postLeaveAdjustment",
                 "Total working days post leave adjustment"));
         columns.add(ReportColumn.number("holidaysAndOffs", "Holidays & Weekly offs"));
+
+        // The deductions, between the figures they come from and the figure
+        // they reduce. A payable day count that is short of the month is the
+        // first thing anybody asks about, and these five columns are the
+        // answer without a second report.
+        columns.add(ReportColumn.number("lateMarks", "Late marks"));
+        columns.add(ReportColumn.number("graceUsedMinutes", "Grace used (min of 30)"));
+        columns.add(ReportColumn.number("latePenaltyDays", "LOP (late marks)"));
+        columns.add(ReportColumn.number("unpaidDays", "LOP (no leave applied)"));
+        columns.add(ReportColumn.number("saturdayHalfDays", "Saturday half days"));
+
         columns.add(ReportColumn.number("payableDays", "Salary payable Days"));
         columns.add(ReportColumn.number("monthlyAccrual", "Paid leaves for the month"));
         columns.add(ReportColumn.number("carryForward",
@@ -653,6 +822,75 @@ public class ReportServiceImpl implements ReportService {
 
     private static String dayKey(int day) {
         return "d" + day;
+    }
+
+    /**
+     * What one day's cell reads as, including the minutes.
+     *
+     * <p>The cell used to say "Late" and nothing else, which told somebody
+     * comparing two sheets that a day was a late mark but not whether it was
+     * by two minutes or by two hours — and said nothing at all about the
+     * month's 30-minute pool, which is what decides whether a late arrival
+     * becomes a late mark in the first place. Three cases now read
+     * differently:
+     *
+     * <ul>
+     *   <li><strong>Late by 7m (5m adj)</strong> — arrived 12 minutes late
+     *       with 5 minutes of the pool left. The 5 were spent, 7 are on the
+     *       record, and the day is a late mark.
+     *   <li><strong>Present (5m adj)</strong> — arrived 5 minutes late and
+     *       the pool covered all of it. Not a late mark, but the minutes are
+     *       gone and the next late arrival has fewer.
+     *   <li><strong>Late by 12m</strong> — the pool was already empty.
+     * </ul>
+     */
+    private String cellLabel(DayCell cell, Attendance attendance) {
+        if (attendance == null) {
+            return cell.label();
+        }
+
+        int late = attendance.getLateMinutes();
+        int adjusted = attendance.getGraceUsedMinutes();
+
+        if (late > 0) {
+            String text = "Late by " + minutes(late);
+            return adjusted > 0 ? text + " (" + minutes(adjusted) + " adj)" : text;
+        }
+        if (adjusted > 0) {
+            return cell.label() + " (" + minutes(adjusted) + " adj)";
+        }
+        return cell.label();
+    }
+
+    /**
+     * A day's cell, saying so when the balance only partly paid for it.
+     *
+     * <p>Three outcomes for a leave day. Covered in full it reads "Leave", as
+     * it always has. Covered by nothing it has already been turned into an
+     * absence by the caller and reads "Absent". Covered in part — half a day
+     * of balance against a whole day of leave — it reads
+     * <strong>Leave 0.5 (0.5 unpaid)</strong>, because neither "Leave" nor
+     * "Absent" is true of it and rounding it to either loses the half that
+     * somebody will query.
+     */
+    private String partlyPaidLabel(DayCell cell, Attendance attendance,
+                                   BigDecimal charged, BigDecimal uncovered) {
+        String label = cellLabel(cell, attendance);
+
+        if (cell != DayCell.LEAVE || charged.signum() == 0 || uncovered.signum() == 0) {
+            return label;
+        }
+        return label + " " + strip(charged) + " (" + strip(uncovered) + " unpaid)";
+    }
+
+    /** "7m", "1h 5m". A day cell on a 48-column sheet has no room for words. */
+    private static String minutes(int total) {
+        if (total < 60) {
+            return total + "m";
+        }
+        int hours = total / 60;
+        int rest = total % 60;
+        return rest == 0 ? hours + "h" : hours + "h " + rest + "m";
     }
 
     private static String ordinal(int day) {
@@ -747,7 +985,8 @@ public class ReportServiceImpl implements ReportService {
                                       Map<LocalDate, Map<Long, DayType>> dayTypes,
                                       Map<LocalDate, Attendance> days,
                                       Map<LocalDate, BigDecimal> leaves,
-                                      LocalDate today, LocalDate trackingStart) {
+                                      LocalDate today, LocalDate trackingStart,
+                                      Rules rules) {
 
         BigDecimal opening = balance == null ? BigDecimal.ZERO
                 : balance.getOpeningBalance()
@@ -769,8 +1008,14 @@ public class ReportServiceImpl implements ReportService {
                     days.get(date), leaves.containsKey(date), today, trackingStart);
 
             if (cell == DayCell.LEAVE || cell == DayCell.HALF_DAY) {
-                opening = opening.subtract(leaves.getOrDefault(date, BigDecimal.ZERO));
-            } else if (cell == DayCell.ABSENT) {
+                opening = opening.subtract(leaves.getOrDefault(date, BigDecimal.ZERO)
+                        .min(rules.weightOf(date)));
+            } else if (cell == DayCell.ABSENT && !rules.appliesOn(date)) {
+                // Only under the old rules. Charging absences to the balance
+                // across the replayed months as well would refund, to every
+                // balance, every absence since the leave year began — for
+                // months that have already been paid under the rule that
+                // charged them.
                 opening = opening.subtract(BigDecimal.ONE);
             }
         }
@@ -787,7 +1032,9 @@ public class ReportServiceImpl implements ReportService {
      * month looks like a bug rather than a go-live date.
      */
     private String comments(YearMonth month, int untracked, int upcoming,
-                            int absences, BigDecimal shortfall) {
+                            int absences, BigDecimal unpaidNoLeave,
+                            BigDecimal unpaidNoBalance, int lateMarks,
+                            BigDecimal latePenalty, BigDecimal shortfall) {
         List<String> notes = new ArrayList<>();
 
         if (untracked > 0) {
@@ -809,16 +1056,44 @@ public class ReportServiceImpl implements ReportService {
             notes.add(upcoming + " day" + (upcoming == 1 ? "" : "s")
                     + " of the month still to come. Run this again once the month has closed.");
         }
+        // Two separate facts, and a row can carry one without the other. How
+        // many days somebody was away is an attendance fact and is stated
+        // whatever the rules do with it. What those days cost is a payroll
+        // fact: zero while an absence is still charged to the leave balance,
+        // and a figure in days — 0.5 for a missed Saturday — once it is not.
         if (absences > 0) {
             notes.add(absences == 1 ? "Absent" : absences + " days absent");
         }
+        if (unpaidNoLeave.signum() > 0) {
+            notes.add(strip(unpaidNoLeave) + " day" + plural(unpaidNoLeave)
+                    + " with no leave applied — loss of pay. Applying for the"
+                    + " leave and having it approved converts this back.");
+        }
+        if (unpaidNoBalance.signum() > 0) {
+            // Nothing for the employee to do about this one, so it does not
+            // tell them to do anything. The balance is the fact.
+            notes.add(strip(unpaidNoBalance) + " day" + plural(unpaidNoBalance)
+                    + " of approved leave with no paid leave left to cover it"
+                    + " — loss of pay.");
+        }
+        if (lateMarks > 0) {
+            String note = lateMarks + " late mark" + (lateMarks == 1 ? "" : "s");
+            notes.add(latePenalty.signum() > 0
+                    ? note + " — " + strip(latePenalty) + " day" + plural(latePenalty)
+                            + " loss of pay."
+                    : note + ", below the threshold that costs a day.");
+        }
         if (shortfall.signum() > 0) {
-            notes.add(strip(shortfall) + " day"
-                    + (BigDecimal.ONE.compareTo(shortfall) == 0 ? "" : "s")
+            notes.add(strip(shortfall) + " day" + plural(shortfall)
                     + " beyond the leave balance — loss of pay.");
         }
 
         return String.join(" ", notes);
+    }
+
+    /** "day" or "days", for a figure that may be a half. */
+    private static String plural(BigDecimal days) {
+        return BigDecimal.ONE.compareTo(days) == 0 ? "" : "s";
     }
 
     /** 2.0 reads as 2, 2.50 as 2.5. A sheet of trailing zeroes is harder to check. */

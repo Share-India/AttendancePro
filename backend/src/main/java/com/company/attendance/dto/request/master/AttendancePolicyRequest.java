@@ -1,9 +1,13 @@
 package com.company.attendance.dto.request.master;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 
 /**
  * The settings an administrator may change on an attendance policy.
@@ -51,9 +55,14 @@ public record AttendancePolicyRequest(
         @Max(value = 480, message = "Early-exit grace beyond eight hours is not a grace period")
         short earlyExitGraceMinutes,
 
-        @Min(value = 1, message = "At least one late mark must count")
+        @Min(value = 0, message = "Late marks per penalty cannot be negative")
         @Max(value = 31, message = "More late marks than days in a month")
-        short lateMarksForHalfDay,
+        short lateMarksPerPenalty,
+
+        @DecimalMin(value = "0.0", message = "A penalty cannot be negative")
+        @DecimalMax(value = "31.0", message = "A penalty of more than a month is not a penalty")
+        @NotNull(message = "State the penalty, even if it is zero")
+        BigDecimal lateMarkPenaltyDays,
 
         @Min(value = 0, message = "A break cannot be negative")
         @Max(value = 1440, message = "A break cannot be longer than a day")

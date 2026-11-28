@@ -70,7 +70,8 @@ public class AttendancePolicyAdminService {
 
         policy.setGracePeriodMinutes(request.gracePeriodMinutes());
         policy.setEarlyExitGraceMinutes(request.earlyExitGraceMinutes());
-        policy.setLateMarksForHalfDay(request.lateMarksForHalfDay());
+        policy.setLateMarksPerPenalty(request.lateMarksPerPenalty());
+        policy.setLateMarkPenaltyDays(request.lateMarkPenaltyDays());
 
         policy.setMaxBreakMinutes(request.maxBreakMinutes());
         policy.setDeductBreakFromWorking(request.deductBreakFromWorking());
@@ -147,7 +148,8 @@ public class AttendancePolicyAdminService {
         values.put("minAttendanceMinutes", policy.getMinAttendanceMinutes());
         values.put("gracePeriodMinutes", policy.getGracePeriodMinutes());
         values.put("earlyExitGraceMinutes", policy.getEarlyExitGraceMinutes());
-        values.put("lateMarksForHalfDay", policy.getLateMarksForHalfDay());
+        values.put("lateMarksPerPenalty", policy.getLateMarksPerPenalty());
+        values.put("lateMarkPenaltyDays", policy.getLateMarkPenaltyDays());
         values.put("maxBreakMinutes", policy.getMaxBreakMinutes());
         values.put("deductBreakFromWorking", policy.isDeductBreakFromWorking());
         values.put("allowPunchOnHoliday", policy.isAllowPunchOnHoliday());

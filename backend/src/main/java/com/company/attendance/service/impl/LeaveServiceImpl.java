@@ -424,7 +424,7 @@ public class LeaveServiceImpl implements LeaveService {
                 .findDeductibleFrom(leaveRequest.getId(), today);
 
         BigDecimal refundDays = refundable.stream()
-                .map(day -> day.getDayPortion().days())
+                .map(LeaveRequestDay::getDeductibleDays)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         leaveRequest.setStatus(RequestStatus.CANCELLED);

@@ -2,6 +2,8 @@ package com.company.attendance.dto.response.master;
 
 import com.company.attendance.entity.AttendancePolicy;
 
+import java.math.BigDecimal;
+
 /**
  * An attendance policy as the settings screen shows it.
  *
@@ -23,7 +25,8 @@ public record AttendancePolicyResponse(
 
         short gracePeriodMinutes,
         short earlyExitGraceMinutes,
-        short lateMarksForHalfDay,
+        short lateMarksPerPenalty,
+        BigDecimal lateMarkPenaltyDays,
         String lateMarkResetPeriod,
 
         short maxBreakMinutes,
@@ -56,7 +59,8 @@ public record AttendancePolicyResponse(
                 policy.getMinAttendanceMinutes(),
                 policy.getGracePeriodMinutes(),
                 policy.getEarlyExitGraceMinutes(),
-                policy.getLateMarksForHalfDay(),
+                policy.getLateMarksPerPenalty(),
+                policy.getLateMarkPenaltyDays(),
                 policy.getLateMarkResetPeriod(),
                 policy.getMaxBreakMinutes(),
                 policy.isDeductBreakFromWorking(),

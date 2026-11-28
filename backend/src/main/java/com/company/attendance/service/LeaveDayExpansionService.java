@@ -38,9 +38,12 @@ import java.util.List;
 public class LeaveDayExpansionService {
 
     private final CalendarService calendarService;
+    private final PayrollRulesService payrollRulesService;
 
-    public LeaveDayExpansionService(CalendarService calendarService) {
+    public LeaveDayExpansionService(CalendarService calendarService,
+                                    PayrollRulesService payrollRulesService) {
         this.calendarService = calendarService;
+        this.payrollRulesService = payrollRulesService;
     }
 
     /** The expansion of a range, with the chargeable total already summed. */
@@ -61,6 +64,12 @@ public class LeaveDayExpansionService {
                             LocalDate toDate,
                             DayPortion fromPortion,
                             DayPortion toPortion) {
+
+        // Read once for the request, not per day. The weight decides what a
+        // date charges: a working Saturday is Share India's short day and
+        // takes half a day off the balance, because that is what the salary
+        // sheet credits back for it.
+        PayrollRulesService.Rules rules = payrollRulesService.current();
 
         List<LeaveRequestDay> days = new ArrayList<>();
         BigDecimal deductibleTotal = BigDecimal.ZERO;
@@ -101,11 +110,10 @@ public class LeaveDayExpansionService {
             day.setDayPortion(portion);
             day.setDeductible(deductible);
             day.setDayType(dayType);
+            day.setDeductibleDays(charge(rules, date, dayType, portion, deductible));
             days.add(day);
 
-            if (deductible) {
-                deductibleTotal = deductibleTotal.add(portion.days());
-            }
+            deductibleTotal = deductibleTotal.add(day.getDeductibleDays());
         }
 
         int sandwiched = applySandwichRule(days);
@@ -116,9 +124,7 @@ public class LeaveDayExpansionService {
             // list stop agreeing.
             deductibleTotal = BigDecimal.ZERO;
             for (LeaveRequestDay day : days) {
-                if (day.isDeductible()) {
-                    deductibleTotal = deductibleTotal.add(day.getDayPortion().days());
-                }
+                deductibleTotal = deductibleTotal.add(day.getDeductibleDays());
             }
             skippedHolidays = countSkipped(days, DayType.HOLIDAY);
             skippedWeeklyOffs = countSkipped(days, DayType.WEEKLY_OFF);
@@ -177,6 +183,12 @@ public class LeaveDayExpansionService {
                     // a boundary.
                     day.setDayPortion(DayPortion.FULL_DAY);
                     day.setDeductible(true);
+                    // A whole day, Saturday included. A bridged day is not a
+                    // short shift somebody failed to turn up for; it is a
+                    // non-working day being priced because the absence ran
+                    // across it, and halving it would make a long weekend
+                    // cheaper than the days either side of it.
+                    day.setDeductibleDays(BigDecimal.ONE);
                     charged++;
                 }
             }
@@ -185,6 +197,30 @@ public class LeaveDayExpansionService {
         }
 
         return charged;
+    }
+
+    /**
+     * What one day of a leave takes off the balance.
+     *
+     * <p>The portion says how much of the day the leave covers; the weight
+     * says how much that day is worth. A whole day on a Wednesday is 1.0, a
+     * whole day on a working Saturday is 0.5, and a half day on a working
+     * Saturday is 0.25 — half of a half-length shift.
+     *
+     * <p>The weight is applied only to a WORKING day. A Saturday somebody is
+     * rostered off is not a short shift they can miss: charged at all, it is
+     * charged by the sandwich rule as a bridged non-working day, and that is
+     * a whole day by the rule's own design.
+     */
+    private BigDecimal charge(PayrollRulesService.Rules rules, LocalDate date,
+                              DayType dayType, DayPortion portion, boolean deductible) {
+        if (!deductible) {
+            return BigDecimal.ZERO;
+        }
+        if (dayType != DayType.WORKING) {
+            return portion.days();
+        }
+        return portion.days().multiply(rules.weightOf(date));
     }
 
     private int countSkipped(List<LeaveRequestDay> days, DayType dayType) {
