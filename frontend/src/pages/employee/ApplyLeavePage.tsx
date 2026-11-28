@@ -26,6 +26,14 @@ interface FormValues {
 
 const isoToday = (): string => new Date().toISOString().slice(0, 10);
 
+/** "1 November 2026" — the same wording the server uses when it refuses. */
+const formatDay = (iso: string): string =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
 const describeFailure = (error: unknown): { title: string; message: string } => {
   if (!(error instanceof ApiError)) {
     return { title: 'Could not submit', message: 'Something went wrong. Please try again.' };
